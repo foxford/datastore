@@ -1,0 +1,25 @@
+# OSX
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Vim
+.*.sw[a-z]
+*.un~
+Session.vim
+
+# Erlang
+deps
+ebin
+doc
+log
+_rel
+relx
+erl_crash.dump
+.erlang.mk
+*.d
+*.plt
+
+## Project
+.docker.env.config
