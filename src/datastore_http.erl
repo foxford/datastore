@@ -31,6 +31,7 @@
 	start/0,
 	access_token/1,
 	find_access_token/1,
+	decode_access_token/2,
 	access_token_type/0,
 	handle_response/3,
 	handle_response/4,
@@ -90,6 +91,12 @@ access_token(Req) ->
 		{ok, Token} -> Token;
 		_           -> throw(missing_access_token)
 	end.
+
+-spec decode_access_token(cowboy_req:req(), map()) -> map().
+decode_access_token(Req, AuthConf) ->
+	jose_jws_compact:decode_fn(
+		fun(Data, _Opts) -> datastore:select_authentication_key(Data, AuthConf) end,
+		access_token(Req)).
 
 -spec handle_response(Req, State, HandleSuccess) -> {Result, Req, State}
 	when
@@ -213,7 +220,7 @@ encode_payload(ContentType, _Body)                      -> error({unsupported_co
 
 -spec routes() -> list(tuple()).
 routes() ->
-	Opts = #{resources => datastore:resources()},
+	Opts = #{resources => datastore:resources(), authentication => datastore:authentication()},
 	Objects =
 		[{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts}],
 

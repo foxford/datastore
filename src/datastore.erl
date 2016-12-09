@@ -30,7 +30,9 @@
 	unix_time/1,
 	unix_time_us/0,
 	unix_time_us/1,
-	priv_path/1
+	priv_path/1,
+	select_authentication_key/2,
+	select_authentication_config/2
 ]).
 
 %% Configuration
@@ -40,6 +42,7 @@
 	httpd_options/0,
 	allowed_origins/0,
 	gun_connection_pools/0,
+	authentication/0,
 	resources/0
 ]).
 
@@ -74,6 +77,24 @@ priv_path(Path) ->
 			Dir        -> Dir
 		end,
 	<<(list_to_binary(Priv))/binary, $/, Path/binary>>.
+
+-spec select_authentication_key(list(), map()) -> jose_jws_compact:select_key_result().
+select_authentication_key([ _, #{<<"iss">> := Iss} | _ ], Conf) ->
+	select_authentication_config(Iss, Conf);
+select_authentication_key([ #{<<"kid">> := Kid}, #{<<"iss">> := Iss} | _ ], Conf) ->
+	select_authentication_config({Iss, Kid}, Conf);
+select_authentication_key(_Data, _Conf) ->
+	{error, missing_access_token_iss}.
+
+-spec select_authentication_config(binary() | {binary(), binary()}, map()) -> jose_jws_compact:select_key_result().
+select_authentication_config(IssKid, Conf) ->
+	case maps:find(IssKid, Conf) of
+		{ok, M} ->
+			#{alg := Alg, key := Key, verify_options := Opts} = M,
+			{ok, {Alg, Key, Opts}};
+		_ ->
+			{error, {missing_authentication_config, IssKid}}
+	end.
 
 %% =============================================================================
 %% Configuration
@@ -116,6 +137,25 @@ gun_connection_pools() ->
 							options => #{protocols => [http]}}} ]
 	end.
 
+-spec authentication() -> map().
+authentication() ->
+	DefaultVerifyOpts =
+		#{parse_header => map,
+			parse_payload => map,
+			parse_signature => binary,
+			verify => [exp, nbf, iat],
+			leeway => 1},
+	%% Examples:
+	%% #{<<"iss">> =>
+	%% 		#{keyfile => <<"keys/example.pem">>,
+	%% 			verify_options => DefaultVerifyOpts}}
+	%% #{{<<"iss">>, <<"kid">>} =>
+	%% 		#{keyfile => <<"keys/example.pem">>,
+	%% 			verify_options => DefaultVerifyOpts}}
+	M = application:get_env(?APP, ?FUNCTION_NAME, #{}),
+	try configure_auth(M, DefaultVerifyOpts)
+	catch throw:R -> error({invalid_authentication_config, R, M}) end.
+
 -spec resources() -> map().
 resources() ->
 	case application:get_env(?APP, ?FUNCTION_NAME) of
@@ -129,3 +169,24 @@ resources() ->
 				#{pool => s2,
 					options => UserOpts}}
 	end.
+
+%% =============================================================================
+%% Internal functions
+%% =============================================================================
+
+-spec configure_auth(map(), map()) -> map().
+configure_auth(M, Default) ->
+	maps:map(fun(_Iss, Conf) -> load_auth_key(maps:merge(Default, Conf)) end, M).
+
+-spec load_auth_key(map()) -> map().
+load_auth_key(#{alg := _, key := _} =M) -> M;
+load_auth_key(#{keyfile := Path} =M) ->
+	try
+		{ok, Pem} = file:read_file(priv_path(Path)),
+		{Alg, Key} = jose_pem:parse_key(Pem),
+		M#{alg => Alg, key => Key}
+	catch _:_ ->
+		throw({bad_keyfile, Path})
+	end;
+load_auth_key(_) ->
+	throw(missing_key).

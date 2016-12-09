@@ -26,10 +26,6 @@
 
 -include("datastore_log.hrl").
 
-%% API
--export([
-]).
-
 %% HTTP handler callbacks
 -export([
 	init/2
@@ -40,23 +36,41 @@
 
 %% Types
 -record(state, {
+	authconf  :: map(),
 	r         :: map(),
 	key       :: iodata(),
 	bucket    :: iodata(),
-	s2reqopts :: riaks2c_http:request_options()
+	s2reqopts :: riaks2c_http:request_options() | undefined
 }).
 
 %% =============================================================================
-%% API
+%% HTTP handler callbacks
+%% =============================================================================
+
+init(Req, Opts) ->
+	#{method := Method} = Req,
+	#{authentication := Auth, resources := R} = Opts,
+	State =
+		#state{
+			authconf = Auth,
+			r = R,
+			key = cowboy_req:binding(key, Req),
+			bucket = cowboy_req:binding(bucket, Req)},
+
+	handle_request(Method, Req, State).
+
+%% =============================================================================
+%% Internal function
 %% =============================================================================
 
 handle_request(<<"GET">>, #{headers := Hs} =Req, State) ->
 	try request_headers(Hs) of
 		S2headers ->
-			handle_read(Req, State#state{s2reqopts = #{headers => S2headers}})
-	catch _:R ->
-		?WARNING_REPORT([{bad_request, R} | datastore_http_log:format_request(Req)]),
-		{stop, cowboy_req:reply(400, Req), State}
+			handle_authentication(Req, State#state{s2reqopts = #{headers => S2headers}})
+	catch
+		_:R ->
+			?WARNING_REPORT([{bad_request, R} | datastore_http_log:format_request(Req)]),
+			{stop, cowboy_req:reply(400, Req), State}
 	end;
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET">>, Req0),
@@ -64,6 +78,16 @@ handle_request(<<"OPTIONS">>, Req0, State) ->
 	{ok, Req2, State};
 handle_request(_, Req, State) ->
 	{stop, cowboy_req:reply(405, Req), State}.
+
+handle_authentication(Req, #state{authconf = Auth} =State) ->
+	try
+		TokenPayload = datastore_http:decode_access_token(Req, Auth),
+		?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
+		handle_read(Req, State)
+	catch T:R ->
+		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
+		{stop, cowboy_req:reply(401, Req), State}
+	end.
 
 handle_read(Req0, #state{r = Resources, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
 	#{object := #{pool := Pool, options := S2opts}} = Resources,
@@ -93,23 +117,6 @@ handle_read_stream(Pid, Ref, Timeout, Req) ->
 			cowboy_req:reply(422, Req)
 	end.
 
-%% =============================================================================
-%% HTTP handler callbacks
-%% =============================================================================
-
-init(Req, Opts) ->
-	State =
-		#state{
-			r = maps:get(resources, Opts),
-			key = cowboy_req:binding(key, Req),
-			bucket = cowboy_req:binding(bucket, Req)},
-
-	handle_request(maps:get(method, Req), Req, State).
-
-%% =============================================================================
-%% Internal function
-%% =============================================================================
-
 -spec request_headers(map()) -> [{binary(), iodata()}].
 request_headers(Headers) ->
 	with_headers(
@@ -117,11 +124,17 @@ request_headers(Headers) ->
 			{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ],
 		Headers).
 
--spec with_headers([binary()], map()) -> [{binary(), iodata()}].
+-spec with_headers([Validator], map()) -> Headers
+	when
+		Validator :: {binary(), fun((iodata()) -> any())},
+		Headers :: [{binary(), iodata()}].
 with_headers(Keys, Headers) ->
 	with_headers(Keys, Headers, []).
 
--spec with_headers([binary()], map(), [{binary(), iodata()}]) -> [{binary(), iodata()}].
+-spec with_headers([Validator], map(), Headers) -> Headers
+	when
+		Validator :: {binary(), fun((iodata()) -> any())},
+		Headers :: [{binary(), iodata()}].
 with_headers([{Key, Validate}|T], Headers, Acc) ->
 	case maps:find(Key, Headers) of
 		{ok, Val} ->
@@ -134,7 +147,10 @@ with_headers([{Key, Validate}|T], Headers, Acc) ->
 with_headers([], _Headers, Acc) ->
 	Acc.
 
--spec set_response_headers([{binary(), iodata()}], Req) -> Req when Req :: cowboy_req:req().
+-spec set_response_headers(Headers, Req) -> Req
+	when
+		Headers :: [{binary(), iodata()}],
+		Req :: cowboy_req:req().
 set_response_headers([{<<"server">>, _}|T], Req)     -> set_response_headers(T, Req);
 set_response_headers([{<<"x-", _/bits>>, _}|T], Req) -> set_response_headers(T, Req);
 set_response_headers([{Key,Val}|T], Req)             -> set_response_headers(T, cowboy_req:set_resp_header(Key, Val, Req));
