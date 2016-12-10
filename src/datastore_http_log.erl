@@ -39,12 +39,14 @@
 
 -spec format_request(cowboy_req:req()) -> kvlist().
 format_request(Req) ->
-	#{method := Method,
+	#{streamid := StreamId,
+		method := Method,
 		version := Version,
 		headers := Headers,
 		peer := {Addr, Port}} = Req,
 	Acc =
-		[	{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
+		[	{http_streamid, StreamId},
+			{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
 			{http_method, Method},
 			{http_version, Version},
 			{http_peer, <<(list_to_binary(inet:ntoa(Addr)))/binary, $:, (integer_to_binary(Port))/binary>>} ],
