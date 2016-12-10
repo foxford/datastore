@@ -70,7 +70,7 @@ handle_request(<<"GET">>, Req, State) ->
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Range">>, Req1),
-	{ok, Req2, State};
+	{ok, cowboy_req:reply(200, Req2), State};
 handle_request(_, Req, State) ->
 	{stop, cowboy_req:reply(405, Req), State}.
 
