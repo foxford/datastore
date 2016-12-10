@@ -89,14 +89,12 @@ find_access_token(Req) ->
 access_token(Req) ->
 	case find_access_token(Req) of
 		{ok, Token} -> Token;
-		_           -> throw(missing_access_token)
+		_           -> error(missing_access_token)
 	end.
 
 -spec decode_access_token(cowboy_req:req(), map()) -> map().
 decode_access_token(Req, AuthConf) ->
-	jose_jws_compact:decode_fn(
-		fun(Data, _Opts) -> datastore:select_authentication_key(Data, AuthConf) end,
-		access_token(Req)).
+	datastore:decode_access_token(access_token(Req), AuthConf).
 
 -spec handle_response(Req, State, HandleSuccess) -> {Result, Req, State}
 	when

@@ -31,8 +31,7 @@
 	unix_time_us/0,
 	unix_time_us/1,
 	priv_path/1,
-	select_authentication_key/2,
-	select_authentication_config/2
+	decode_access_token/2
 ]).
 
 %% Configuration
@@ -78,23 +77,11 @@ priv_path(Path) ->
 		end,
 	<<(list_to_binary(Priv))/binary, $/, Path/binary>>.
 
--spec select_authentication_key(list(), map()) -> jose_jws_compact:select_key_result().
-select_authentication_key([ _, #{<<"iss">> := Iss} | _ ], Conf) ->
-	select_authentication_config(Iss, Conf);
-select_authentication_key([ #{<<"kid">> := Kid}, #{<<"iss">> := Iss} | _ ], Conf) ->
-	select_authentication_config({Iss, Kid}, Conf);
-select_authentication_key(_Data, _Conf) ->
-	{error, missing_access_token_iss}.
-
--spec select_authentication_config(binary() | {binary(), binary()}, map()) -> jose_jws_compact:select_key_result().
-select_authentication_config(IssKid, Conf) ->
-	case maps:find(IssKid, Conf) of
-		{ok, M} ->
-			#{alg := Alg, key := Key, verify_options := Opts} = M,
-			{ok, {Alg, Key, Opts}};
-		_ ->
-			{error, {missing_authentication_config, IssKid}}
-	end.
+-spec decode_access_token(binary(), map()) -> map().
+decode_access_token(Token, AuthConf) ->
+	jose_jws_compact:decode_fn(
+		fun(Data, _Opts) -> select_authentication_key(Data, AuthConf) end,
+		Token).
 
 %% =============================================================================
 %% Configuration
@@ -190,3 +177,21 @@ load_auth_key(#{keyfile := Path} =M) ->
 	end;
 load_auth_key(_) ->
 	throw(missing_key).
+
+-spec select_authentication_key(list(), map()) -> jose_jws_compact:select_key_result().
+select_authentication_key([ _, #{<<"iss">> := Iss} | _ ], Conf) ->
+	select_authentication_config(Iss, Conf);
+select_authentication_key([ #{<<"kid">> := Kid}, #{<<"iss">> := Iss} | _ ], Conf) ->
+	select_authentication_config({Iss, Kid}, Conf);
+select_authentication_key(_Data, _Conf) ->
+	{error, missing_access_token_iss}.
+
+-spec select_authentication_config(binary() | {binary(), binary()}, map()) -> jose_jws_compact:select_key_result().
+select_authentication_config(IssKid, Conf) ->
+	case maps:find(IssKid, Conf) of
+		{ok, M} ->
+			#{alg := Alg, key := Key, verify_options := Opts} = M,
+			{ok, {Alg, Key, Opts}};
+		_ ->
+			{error, {missing_authentication_config, IssKid}}
+	end.

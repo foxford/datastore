@@ -36,11 +36,13 @@
 
 %% Types
 -record(state, {
-	authconf  :: map(),
-	r         :: map(),
-	key       :: iodata(),
-	bucket    :: iodata(),
-	s2reqopts :: riaks2c_http:request_options() | undefined
+	authconf        :: map(),
+	r               :: map(),
+	key             :: iodata(),
+	bucket          :: iodata(),
+	params    = #{} :: map(),
+	s2reqopts = #{} :: riaks2c_http:request_options(),
+	token_payload   :: map() | undefined
 }).
 
 %% =============================================================================
@@ -49,10 +51,10 @@
 
 init(Req, Opts) ->
 	#{method := Method} = Req,
-	#{authentication := Auth, resources := R} = Opts,
+	#{authentication := AuthConf, resources := R} = Opts,
 	State =
 		#state{
-			authconf = Auth,
+			authconf = AuthConf,
 			r = R,
 			key = cowboy_req:binding(key, Req),
 			bucket = cowboy_req:binding(bucket, Req)},
@@ -60,18 +62,11 @@ init(Req, Opts) ->
 	handle_request(Method, Req, State).
 
 %% =============================================================================
-%% Internal function
+%% Internal functions
 %% =============================================================================
 
-handle_request(<<"GET">>, #{headers := Hs} =Req, State) ->
-	try request_headers(Hs) of
-		S2headers ->
-			handle_authentication(Req, State#state{s2reqopts = #{headers => S2headers}})
-	catch
-		_:R ->
-			?WARNING_REPORT([{bad_request, R} | datastore_http_log:format_request(Req)]),
-			{stop, cowboy_req:reply(400, Req), State}
-	end;
+handle_request(<<"GET">>, Req, State) ->
+	handle_headers(allow_read_headers(), Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Range">>, Req1),
@@ -79,11 +74,35 @@ handle_request(<<"OPTIONS">>, Req0, State) ->
 handle_request(_, Req, State) ->
 	{stop, cowboy_req:reply(405, Req), State}.
 
-handle_authentication(Req, #state{authconf = Auth} =State) ->
+handle_headers(AllowedHs, #{headers := Hs} =Req, State) ->
+	try with_headers(AllowedHs, Hs) of
+		S2headers ->
+			handle_params(Req, State#state{s2reqopts = #{headers => S2headers}})
+	catch
+		T:R ->
+			?ERROR_REPORT([{http_headers, Hs} | datastore_http_log:format_request(Req)], T, R),
+			{stop, cowboy_req:reply(400, Req), State}
+	end.
+
+handle_params(#{method := Method} =Req, State) ->
+	try parse_params(Method, cowboy_req:parse_qs(Req)) of
+		Params ->
+			handle_authentication(Req, State#state{params = Params})
+	catch
+		T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+			{stop, cowboy_req:reply(400, Req), State}
+	end.
+
+handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) ->
 	try
-		TokenPayload = datastore_http:decode_access_token(Req, Auth),
+		TokenPayload =
+			case Params of
+				#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
+				_                        -> datastore_http:decode_access_token(Req, AuthConf)
+			end,
 		?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
-		handle_read(Req, State)
+		handle_read(Req, State#state{token_payload = TokenPayload})
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
 		{stop, cowboy_req:reply(401, Req), State}
@@ -113,16 +132,23 @@ handle_read_stream(Pid, Ref, Timeout, Req) ->
 		{response, _IsFin, 404, _Headers} ->
 			cowboy_req:reply(404, Req);
 		{response, _IsFin, _Status, _Headers} ->
-			?ERROR_REPORT([{bad_http_status, _Status} | datastore_http_log:format_request(Req)]),
+			?ERROR_REPORT([{riaks2_resp_status, _Status} | datastore_http_log:format_request(Req)]),
 			cowboy_req:reply(422, Req)
 	end.
 
--spec request_headers(map()) -> [{binary(), iodata()}].
-request_headers(Headers) ->
-	with_headers(
-		[	{<<"range">>, fun cow_http_hd:parse_range/1},
-			{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ],
-		Headers).
+-spec allow_read_headers() -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
+allow_read_headers() ->
+	[	{<<"range">>, fun cow_http_hd:parse_range/1},
+		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ].
+
+-spec parse_params(binary(), [{binary(), binary() | true}]) -> map().
+parse_params(<<"GET">>, Qs) ->
+	parse_read_params(Qs, #{}).
+
+-spec parse_read_params([{binary(), binary() | true}], map()) -> map().
+parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
+parse_read_params([_|T], M)                         -> parse_read_params(T, M);
+parse_read_params([], M)                            -> M.
 
 -spec with_headers([Validator], map()) -> Headers
 	when
