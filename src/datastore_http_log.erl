@@ -27,7 +27,8 @@
 %% API
 -export([
 	format_request/1,
-	format_unauthenticated_request/1
+	format_unauthenticated_request/1,
+	format_response/3
 ]).
 
 %% Types
@@ -45,7 +46,7 @@ format_request(Req) ->
 		headers := Headers,
 		peer := {Addr, Port}} = Req,
 	Acc =
-		[	{http_streamid, StreamId},
+		[	{http_stream_id, StreamId},
 			{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
 			{http_method, Method},
 			{http_version, Version},
@@ -55,6 +56,12 @@ format_request(Req) ->
 -spec format_unauthenticated_request(cowboy_req:req()) -> kvlist().
 format_unauthenticated_request(#{headers := Headers} =Req) ->
 	add_optional_map_property(http_authorization_header, <<"authorization">>, Headers, format_request(Req)).
+
+-spec format_response(integer(), integer(), map()) -> kvlist().
+format_response(StreamId, Status, Headers) ->
+	[	{http_stream_id, StreamId},
+		{http_headers, Headers},
+		{http_status_code, Status} ].
 
 %% =============================================================================
 %% Internal function

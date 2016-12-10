@@ -55,10 +55,12 @@
 %% API
 %% =============================================================================
 
+-spec start() -> {ok, pid()} | {error, any()}.
 start() ->
 	HttpOpts = datastore:http_options(),
 	HttpdRequiredOpts =
-		#{middlewares => [datastore_httpm_cors, cowboy_router, cowboy_handler],
+		#{stream_handler => {datastore_stream_h, supervisor},
+			middlewares => [datastore_httpm_cors, cowboy_router, cowboy_handler],
 			env => #{dispatch => dispatch(), allowed_origins => datastore:allowed_origins()}},
 	HttpdStart =
 		case lists:keyfind(certfile, 1, HttpOpts) of

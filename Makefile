@@ -1,3 +1,5 @@
+.PHONY: plt-hotfix
+
 PROJECT = datastore
 PROJECT_DESCRIPTION = Data store.
 PROJECT_VERSION = 0.1.0
@@ -24,9 +26,9 @@ SHELL_OPTS = \
 
 include erlang.mk
 
+define REMOVE_FROM_PLT
+	$(verbose) dialyzer --remove_from_plt --plt .$(PROJECT).plt -r "$(CURDIR)/$(1)" | true
+endef
+
 plt-hotfix:
-	$(verbose) dialyzer \
-		--remove_from_plt \
-		--plt .datastore.plt \
-		-r "$(CURDIR)/deps/cowboy/ebin/cowboy_rest.beam" \
-		| true
+	$(call REMOVE_FROM_PLT deps/cowboy/ebin/cowboy_rest.beam)
