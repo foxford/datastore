@@ -117,7 +117,7 @@ gun_connection_pools() ->
 			{ok, Conf} = file:consult(".docker.env.config"),
 			{_, #{host := Host, port := Port}} = lists:keyfind(httpc_options, 1, Conf),
 			[	#{name => s2,
-					size => 5,
+					size => 100,
 					connection =>
 						#{host => Host,
 							port => Port,
@@ -154,7 +154,8 @@ resources() ->
 			{_, UserOpts} = lists:keyfind(user, 1, Conf),
 			#{object =>
 				#{pool => s2,
-					options => UserOpts}}
+					options => UserOpts,
+					handler => datastore_objecth}}
 	end.
 
 %% =============================================================================

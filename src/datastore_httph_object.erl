@@ -95,12 +95,10 @@ handle_params(#{method := Method} =Req, State) ->
 	end.
 
 handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) ->
-	try
-		TokenPayload =
-			case Params of
-				#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
-				_                        -> datastore_http:decode_access_token(Req, AuthConf)
-			end,
+	try case Params of
+		#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
+		_                        -> datastore_http:decode_access_token(Req, AuthConf)
+	end of TokenPayload ->
 		?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
 		handle_read(Req, State#state{token_payload = TokenPayload})
 	catch T:R ->
@@ -108,32 +106,45 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		{stop, cowboy_req:reply(401, Req), State}
 	end.
 
-handle_read(Req0, #state{r = Resources, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := Pool, options := S2opts}} = Resources,
+handle_read(Req0, #state{r = Resources, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := Pool, options := S2opts, handler := Hmod}} = Resources,
 
 	Pid = gunc_pool:lock(Pool),
 	Ref = riaks2c_object:get(Pid, Bucket, Key, S2reqopts, S2opts),
-	Req1 = handle_read_stream(Pid, Ref, ?REQUEST_TIMEOUT, Req0),
+	Req1 =
+		try handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, ?REQUEST_TIMEOUT, Req0)
+		catch T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			cowboy_req:reply(422, Req0)
+		end,
 	gunc_pool:unlock(Pool, Pid),
 	{ok, Req1, State}.
 
--spec handle_read_stream(pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
-handle_read_stream(Pid, Ref, Timeout, Req) ->
+-spec handle_read_stream(module(), binary(), binary(), map(), pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
+handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, Req) ->
 	Mref = monitor(process, Pid),
-	case gun:await(Pid, Ref, Mref) of
-		{response, nofin, Status, Headers} when Status =:= 200; Status =:= 206 ->
-			Stream = cowboy_req:stream_reply(Status, set_response_headers(Headers, Req)),
-			riaks2c_http:fold_body(
-				Pid, Ref, Timeout, Mref, ignore,
-				fun(Data, IsFin, _) ->
-					cowboy_req:stream_body(Data, IsFin, Stream)
-				end),
-			Stream;
-		{response, _IsFin, 404, _Headers} ->
+	case riaks2c_object:expect_head(Pid, Ref, Timeout, Mref) of
+		{Status, Headers} when Status >= 200, Status < 300 ->
+			case Hmod:handle_read(Bucket, Key, Params, Status, Headers) of
+				{stream, Hst, Hhs, Hstate} ->
+					Stream = cowboy_req:stream_reply(Hst, Hhs, Req),
+					riaks2c_http:fold_body(
+						Pid, Ref, Timeout, Mref, Hstate,
+						fun(Data, IsFin, Acc) ->
+							Hmod:handle_read_stream(Data, IsFin, Stream, Acc)
+						end),
+					Stream;
+				{await_body, Hstate} ->
+					Body = riaks2c_object:expect_body(Pid, Ref, Timeout, Mref),
+					case Hmod:handle_read_body(Status, Headers, Body, Hstate) of
+						{Hst, Hhs, keep_body} -> cowboy_req:reply(Hst, Hhs, Body, Req);
+						{Hst, Hhs, Hbody}     -> cowboy_req:reply(Hst, Hhs, Hbody, Req)
+					end
+			end;
+		{404, _Headers} ->
 			cowboy_req:reply(404, Req);
-		{response, _IsFin, _Status, _Headers} ->
-			?ERROR_REPORT([{riaks2_resp_status, _Status} | datastore_http_log:format_request(Req)]),
-			cowboy_req:reply(422, Req)
+		{Status, _Headers} ->
+			exit({bad_riaks2_response_status, Status})
 	end.
 
 -spec allow_read_headers() -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
@@ -172,12 +183,3 @@ with_headers([{Key, Validate}|T], Headers, Acc) ->
 	end;
 with_headers([], _Headers, Acc) ->
 	Acc.
-
--spec set_response_headers(Headers, Req) -> Req
-	when
-		Headers :: [{binary(), iodata()}],
-		Req :: cowboy_req:req().
-set_response_headers([{<<"server">>, _}|T], Req)     -> set_response_headers(T, Req);
-set_response_headers([{<<"x-", _/bits>>, _}|T], Req) -> set_response_headers(T, Req);
-set_response_headers([{Key,Val}|T], Req)             -> set_response_headers(T, cowboy_req:set_resp_header(Key, Val, Req));
-set_response_headers([], Req)                        -> Req.
