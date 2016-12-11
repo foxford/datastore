@@ -33,7 +33,9 @@
 
 %% API
 -export([
-	cleanup_headers/1
+	cleanup_headers/1,
+	cleanup_content_headers/1,
+	media_type/1
 ]).
 
 %% Callbacks
@@ -78,8 +80,11 @@
 		CowboyHeaders :: cowboy_stream:headers(),
 		State         :: any(),
 		Result        :: {await_body, State} | {stream, Status, CowboyHeaders, State}.
-handle_read(_Bucket, _Key, _Params, Status, Headers) ->
-	{stream, Status, cleanup_headers(Headers), ignore}.
+handle_read(Bucket, Key, Params, Status, Headers) ->
+	case media_type(Headers) of
+		{<<"application">>, <<"vnd.apple.mpegurl">>, _} -> datastore_objecth_m3u8:handle_read(Bucket, Key, Params, Status, Headers);
+		_                                               -> {stream, Status, cleanup_headers(Headers), ignore}
+	end.
 
 -spec handle_read_stream(Data, Fin, Stream, State) -> State
 	when
@@ -87,6 +92,8 @@ handle_read(_Bucket, _Key, _Params, Status, Headers) ->
 		Fin    :: riaks2c_http:fin(),
 		Stream :: cowboy_req:req(),
 		State  :: any().
+handle_read_stream(Data, IsFin, Stream, {Mod, State}) ->
+	Mod:handle_read_stream(Data, IsFin, Stream, State);
 handle_read_stream(Data, IsFin, Stream, State) ->
 	cowboy_req:stream_body(Data, IsFin, Stream),
 	State.
@@ -99,6 +106,8 @@ handle_read_stream(Data, IsFin, Stream, State) ->
 		Data          :: iodata(),
 		State         :: any(),
 		Result        :: {Status, CowboyHeaders, Data | keep_body}.
+handle_read_body(Status, Headers, Body, {Mod, State}) ->
+	Mod:handle_read_body(Status, Headers, Body, State);
 handle_read_body(Status, Headers, _Body, _State) ->
 	{Status, cleanup_headers(Headers), keep_body}.
 
@@ -111,7 +120,25 @@ cleanup_headers(Headers) ->
 	cleanup_headers(Headers, #{}).
 
 -spec cleanup_headers(riaks2c_http:headers(), cowboy_stream:headers()) -> cowboy_stream:headers().
-cleanup_headers([{<<"server">>, _}|T], Acc)        -> cleanup_headers(T, Acc);
 cleanup_headers([{<<"x-", _/bits>>, _}|T], Acc)    -> cleanup_headers(T, Acc);
+cleanup_headers([{<<"server">>, _}|T], Acc)        -> cleanup_headers(T, Acc);
 cleanup_headers([{Key, Val}|T], Acc)               -> cleanup_headers(T, Acc#{Key => Val});
 cleanup_headers([], Acc)                           -> Acc.
+
+-spec cleanup_content_headers(riaks2c_http:headers()) -> cowboy_stream:headers().
+cleanup_content_headers(Headers) ->
+	cleanup_content_headers(Headers, #{}).
+
+-spec cleanup_content_headers(riaks2c_http:headers(), cowboy_stream:headers()) -> cowboy_stream:headers().
+cleanup_content_headers([{<<"x-", _/bits>>, _}|T], Acc)       -> cleanup_content_headers(T, Acc);
+cleanup_content_headers([{<<"content-", _/bits>>, _}|T], Acc) -> cleanup_content_headers(T, Acc);
+cleanup_content_headers([{<<"server">>, _}|T], Acc)           -> cleanup_content_headers(T, Acc);
+cleanup_content_headers([{Key, Val}|T], Acc)                  -> cleanup_content_headers(T, Acc#{Key => Val});
+cleanup_content_headers([], Acc)                              -> Acc.
+
+-spec media_type(riaks2c_http:headers()) -> cow_http_hd:media_type() | undefined.
+media_type(Headers) ->
+	case lists:keyfind(<<"content-type">>, 1, Headers) of
+		{_, Val} -> try cow_http_hd:parse_content_type(Val) catch _:_ -> undefined end;
+		_        -> undefined
+	end.
