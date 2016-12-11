@@ -46,7 +46,7 @@ format_request(Req) ->
 		headers := Headers,
 		peer := {Addr, Port}} = Req,
 	Acc =
-		[	{http_stream_id, StreamId},
+		[	{http_streamid, StreamId},
 			{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
 			{http_method, Method},
 			{http_version, Version},
@@ -59,7 +59,7 @@ format_unauthenticated_request(#{headers := Headers} =Req) ->
 
 -spec format_response(integer(), integer(), map()) -> kvlist().
 format_response(StreamId, Status, Headers) ->
-	[	{http_stream_id, StreamId},
+	[	{http_streamid, StreamId},
 		{http_headers, Headers},
 		{http_status_code, Status} ].
 
