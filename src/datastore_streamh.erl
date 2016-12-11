@@ -22,7 +22,7 @@
 %% IN THE SOFTWARE.
 %% ----------------------------------------------------------------------------
 
--module(datastore_stream_h).
+-module(datastore_streamh).
 
 -include("datastore_log.hrl").
 
