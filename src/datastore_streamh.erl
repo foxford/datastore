@@ -47,6 +47,9 @@ data(StreamID, IsFin, Data, State) ->
 info(StreamId, {response, Status, Headers, _Body} =Response, State) ->
 	?INFO_REPORT(datastore_http_log:format_response(StreamId, Status, Headers)),
 	cowboy_stream_h:info(StreamId, Response, State);
+info(StreamId, {headers, Status, Headers} =Response, State) ->
+	?INFO_REPORT(datastore_http_log:format_response(StreamId, Status, Headers)),
+	cowboy_stream_h:info(StreamId, Response, State);
 info(StreamId, Message, State) ->
 	cowboy_stream_h:info(StreamId, Message, State).
 
