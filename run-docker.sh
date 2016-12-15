@@ -2,11 +2,18 @@
 
 PROJECT='datastore'
 PROJECT_DIR="/opt/sandbox/${PROJECT}"
-DOCKER_ENV_CONFIG='.docker.env.config'
-DOCKER_RUN_OPTIONS=${DOCKER_RUN_OPTIONS:-'-ti --rm'}
 DOCKER_CONTAINER_NAME="sandbox/${PROJECT}"
 DOCKER_CONTAINER_COMMAND=${DOCKER_CONTAINER_COMMAND:-'/bin/bash'}
+DOCKER_RUN_OPTIONS=${DOCKER_RUN_OPTIONS:-'-ti --rm'}
+DOCKER_RIAKS2_HTTP_PORT=${DOCKER_RIAKS2_HTTP_PORT:-8080}
+DEVELOP_ENVIRONMENT='.develop-environment'
 ULIMIT_FD=262144
+
+function CREATE_DEVELOP_ENVIRONMENT() {
+	local DOCKER_MACHINE_IP=$(docker-machine ip)
+	local DOCKER_IP=${DOCKER_MACHINE_IP:-'localhost'}
+	printf "{s2_http, #{host => \"%s\", port => %s}}.\n" "${DOCKER_IP}" "${DOCKER_RIAKS2_HTTP_PORT}" > "${DEVELOP_ENVIRONMENT}"
+}
 
 function CREATE_RIAKS2_USER() {
 	local EMAIL="${1}"
@@ -20,19 +27,13 @@ function CREATE_RIAKS2_USER() {
 	echo "${RESULT}"
 }
 
-function DOCKER_BUILD_BEGIN() {
-	local DOCKER_MACHINE_IP=$(docker-machine ip)
-	local DOCKER_IP=${DOCKER_MACHINE_IP:-'localhost'}
-	printf "{httpc_options, #{host => \"%s\", port => %s}}.\n" "${DOCKER_IP}" '8080' > "${DOCKER_ENV_CONFIG}"
-}
-
 read -r DOCKER_RUN_COMMAND <<-EOF
-	function ADD_USER_TO_DEVCONF() { \
+	function ADD_USER_TO_DEVELOP_ENVIRONMENT() { \
 		local KEY="\${1}"; \
 		local ID="\${2}"; \
 		local SECRET="\${3}"; \
 		local HOST="s3.amazonaws.com"; \
-		local CONFIG_FILE="${PROJECT_DIR}/${DOCKER_ENV_CONFIG}"; \
+		local CONFIG_FILE="${PROJECT_DIR}/${DEVELOP_ENVIRONMENT}"; \
 		printf "{\${KEY}, #{id => <<\"%s\">>, secret => <<\"%s\">>, host => <<\"%s\">>}}.\n" "\${ID}" "\${SECRET}" "\${HOST}" >> "\${CONFIG_FILE}"; \
 	} \
 	&& service rsyslog start \
@@ -42,9 +43,9 @@ read -r DOCKER_RUN_COMMAND <<-EOF
 	&& stanchion start \
 	&& riak-cs start \
 	&& ADMIN=(\$($(CREATE_RIAKS2_USER 'admin@example.org' 'admin') | jq -r '.key_id,.key_secret')) \
-	&& \$(ADD_USER_TO_DEVCONF 'admin' "\${ADMIN[0]}" "\${ADMIN[1]}") \
+	&& \$(ADD_USER_TO_DEVELOP_ENVIRONMENT 's2_admin' "\${ADMIN[0]}" "\${ADMIN[1]}") \
 	&& USER=(\$($(CREATE_RIAKS2_USER 'user@example.org' 'user') | jq -r '.key_id,.key_secret')) \
-	&& \$(ADD_USER_TO_DEVCONF 'user' "\${USER[0]}" "\${USER[1]}") \
+	&& \$(ADD_USER_TO_DEVELOP_ENVIRONMENT 's2_user' "\${USER[0]}" "\${USER[1]}") \
 	&& riak-cs stop \
 	&& stanchion stop \
 	&& perl -pi -e "s/admin\.key = .*/\
@@ -60,11 +61,11 @@ read -r DOCKER_RUN_COMMAND <<-EOF
 	&& riak-cs start
 EOF
 
-DOCKER_BUILD_BEGIN
+CREATE_DEVELOP_ENVIRONMENT
 docker build --build-arg ULIMIT_FD=${ULIMIT_FD} -t ${DOCKER_CONTAINER_NAME} .
 docker run ${DOCKER_RUN_OPTIONS} \
 	-v $(pwd):${PROJECT_DIR} \
 	--ulimit nofile=${ULIMIT_FD}:${ULIMIT_FD} \
-	-p 8080:8080 \
+	-p ${DOCKER_RIAKS2_HTTP_PORT}:8080 \
 	${DOCKER_CONTAINER_NAME} \
 	/bin/bash -c "set -x && cd ${PROJECT_DIR} && ${DOCKER_RUN_COMMAND} && set +x && ${DOCKER_CONTAINER_COMMAND}"

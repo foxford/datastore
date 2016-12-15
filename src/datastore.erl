@@ -114,14 +114,16 @@ gun_connection_pools() ->
 		_ ->
 			%% Getting default values from the Docker environment
 			%% configuration file, if it's available.
-			{ok, Conf} = file:consult(".docker.env.config"),
-			{_, #{host := Host, port := Port}} = lists:keyfind(httpc_options, 1, Conf),
-			[	#{name => s2,
-					size => 100,
-					connection =>
-						#{host => Host,
-							port => Port,
-							options => #{protocols => [http]}}} ]
+			try
+				{ok, Conf} = file:consult(".develop-environment"),
+				{_, #{host := Host, port := Port}} = lists:keyfind(s2_http, 1, Conf),
+				[	#{name => s2_http,
+						size => 100,
+						connection =>
+							#{host => Host,
+								port => Port,
+								options => #{protocols => [http]}}} ]
+			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
 	end.
 
 -spec authentication() -> map().
@@ -150,12 +152,14 @@ resources() ->
 		_ ->
 			%% Getting default values from the Docker environment
 			%% configuration file, if it's available.
-			{ok, Conf} = file:consult(".docker.env.config"),
-			{_, UserOpts} = lists:keyfind(user, 1, Conf),
-			#{object =>
-				#{pool => s2,
-					options => UserOpts,
-					handler => datastore_objecth}}
+			try
+				{ok, Conf} = file:consult(".develop-environment"),
+				{_, UserOpts} = lists:keyfind(s2_user, 1, Conf),
+				#{object =>
+					#{pool => s2_http,
+						options => UserOpts,
+						handler => datastore_objecth}}
+			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
 	end.
 
 %% =============================================================================
