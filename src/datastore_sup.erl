@@ -47,6 +47,9 @@ start_link() ->
 %% =============================================================================
 
 init([]) ->
-  Flags = #{strategy => one_for_one},
-  Procs = [gunc_pool:child_spec(PoolDesc) || PoolDesc <- datastore:gun_connection_pools()],
-  {ok, {Flags, Procs}}.
+	KVpools = [riakc_pool:child_spec(PoolDesc) || PoolDesc <- datastore:riak_connection_pools()],
+	S2pools = [gunc_pool:child_spec(PoolDesc) || PoolDesc <- datastore:gun_connection_pools()],
+
+	Flags = #{strategy => one_for_one},
+	Procs = KVpools ++ S2pools,
+	{ok, {Flags, Procs}}.

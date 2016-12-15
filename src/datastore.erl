@@ -31,6 +31,7 @@
 	unix_time_us/0,
 	unix_time_us/1,
 	priv_path/1,
+	authorize/4,
 	decode_access_token/2
 ]).
 
@@ -40,6 +41,7 @@
 	httpd_acceptor_pool_size/0,
 	httpd_options/0,
 	allowed_origins/0,
+	riak_connection_pools/0,
 	gun_connection_pools/0,
 	authentication/0,
 	resources/0
@@ -77,6 +79,18 @@ priv_path(Path) ->
 		end,
 	<<(list_to_binary(Priv))/binary, $/, Path/binary>>.
 
+-spec authorize(binary(), binary(), map(), map()) -> {ok, map()}.
+authorize(Bucket, Key, AuthM, Resources) ->
+	#{account_aclsubject := #{bucket := AclSubBucket, pool := Pool},
+		object_aclobject := #{bucket := AclObjBucket}} = Resources,
+
+	ObjKey = <<Bucket/binary, $:, Key/binary>>,
+	SubKey = maps:get(<<"sub">>, AuthM, <<"anonymous">>),
+	Pid = riakc_pool:lock(Pool),
+	Result = riakacl:authorize(Pid, AclSubBucket, SubKey, AclObjBucket, ObjKey, riakacl_rwaccess),
+	riakc_pool:unlock(Pool, Pid),
+	Result.
+
 -spec decode_access_token(binary(), map()) -> map().
 decode_access_token(Token, AuthConf) ->
 	jose_jws_compact:decode_fn(
@@ -106,6 +120,25 @@ httpd_options() ->
 -spec allowed_origins() -> Origin | [Origin] | '*' when Origin :: {binary(), binary(), 0..65535}.
 allowed_origins() ->
 	application:get_env(?APP, ?FUNCTION_NAME, '*').
+
+-spec riak_connection_pools() -> [map()].
+riak_connection_pools() ->
+	case application:get_env(?APP, ?FUNCTION_NAME) of
+		{ok, Val} -> Val;
+		_ ->
+			%% Getting default values from the Docker environment
+			%% configuration file, if it's available.
+			try
+				{ok, Conf} = file:consult("deps/riakacl/.develop-environment"),
+				{_, #{host := Host, port := Port}} = lists:keyfind(kv_protobuf, 1, Conf),
+				[	#{name => kv_protobuf,
+						size => 5,
+						connection =>
+							#{host => Host,
+								port => Port,
+								options => [queue_if_disconnected]}} ]
+			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
+	end.
 
 -spec gun_connection_pools() -> [map()].
 gun_connection_pools() ->
@@ -156,9 +189,15 @@ resources() ->
 				{ok, Conf} = file:consult(".develop-environment"),
 				{_, UserOpts} = lists:keyfind(s2_user, 1, Conf),
 				#{object =>
-					#{pool => s2_http,
-						options => UserOpts,
-						handler => datastore_objecth}}
+						#{pool => s2_http,
+							options => UserOpts,
+							handler => datastore_objecth},
+					account_aclsubject =>
+						#{pool => kv_protobuf,
+							bucket => {<<"riakacl_subject_t">>, <<"datastore-account-aclsubject">>}},
+					object_aclobject =>
+						#{pool => kv_protobuf,
+							bucket => {<<"riakacl_object_t">>, <<"datastore-object-aclobject">>}}}
 			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
 	end.
 

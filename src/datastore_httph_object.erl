@@ -42,7 +42,7 @@
 	bucket          :: iodata(),
 	params    = #{} :: map(),
 	s2reqopts = #{} :: riaks2c_http:request_options(),
-	token_payload   :: map() | undefined
+	authm     = #{} :: map()
 }).
 
 %% =============================================================================
@@ -101,10 +101,20 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		_                        -> datastore_http:decode_access_token(Req, AuthConf)
 	end of TokenPayload ->
 		?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
-		handle_read(Req, State#state{token_payload = TokenPayload})
+		handle_authorization(Req, State#state{authm = TokenPayload})
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
 		{stop, cowboy_req:reply(401, Req), State}
+	end.
+
+handle_authorization(Req, #state{r = Resources, bucket = Bucket, key = Key, authm = AuthM} =State) ->
+	try datastore:authorize(Bucket, Key, AuthM, Resources) of
+		{ok, #{read := true}} -> handle_read(Req, State);
+		_                     -> {stop, cowboy_req:reply(403, Req), State}
+	catch
+		T:R ->
+		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
 handle_read(Req0, #state{r = Resources, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
