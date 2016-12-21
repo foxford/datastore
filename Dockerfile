@@ -3,10 +3,12 @@ FROM ubuntu:16.04
 ARG RIAKKV_VERSION
 ARG RIAKCS_VERSION
 ARG STANCHION_VERSION
+ARG ERLANG_VERSION
 ARG ULIMIT_FD
 ENV RIAKKV_VERSION=${RIAKKV_VERSION:-2.2.0}
 ENV RIAKCS_VERSION=${RIAKCS_VERSION:-2.1.1}
 ENV STANCHION_VERSION=${STANCHION_VERSION:-2.1.1}
+ENV ERLANG_VERSION=${ERLANG_VERSION:-19.1}
 ENV ULIMIT_FD=${ULIMIT_FD:-262144}
 
 ## -----------------------------------------------------------------------------
@@ -28,8 +30,21 @@ RUN set -xe \
 		sudo \
 		less \
 		make \
+		g++ \
 		git \
 		jq
+
+## -----------------------------------------------------------------------------
+## Installing Erlang
+## -----------------------------------------------------------------------------
+RUN set -xe \
+	&& add-apt-repository -y "deb https://packages.erlang-solutions.com/ubuntu $(lsb_release -sc) contrib" \
+	&& curl -vs http://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc 2>&1 | apt-key add -- \
+	&& apt-get update \
+	&& apt-get -y --no-install-recommends install \
+		erlang-nox=1:${ERLANG_VERSION}-1 \
+		erlang-dialyzer \
+		erlang-dev
 
 ## -----------------------------------------------------------------------------
 ## Installing Riak KV, Riak S2, Stanchion
