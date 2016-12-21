@@ -31,6 +31,7 @@
 	unix_time_us/0,
 	unix_time_us/1,
 	priv_path/1,
+	conf_path/1,
 	authorize/4,
 	decode_access_token/2
 ]).
@@ -78,6 +79,13 @@ priv_path(Path) ->
 			Dir        -> Dir
 		end,
 	<<(list_to_binary(Priv))/binary, $/, Path/binary>>.
+
+-spec conf_path(binary()) -> binary().
+conf_path(Path) ->
+	case filename:pathtype(Path) of
+		relative -> priv_path(Path);
+		_        -> Path
+	end.
 
 -spec authorize(binary(), binary(), map(), map()) -> {ok, map()}.
 authorize(Bucket, Key, AuthM, Resources) ->
@@ -213,7 +221,7 @@ configure_auth(M, Default) ->
 load_auth_key(#{alg := _, key := _} =M) -> M;
 load_auth_key(#{keyfile := Path} =M) ->
 	try
-		{ok, Pem} = file:read_file(priv_path(Path)),
+		{ok, Pem} = file:read_file(conf_path(Path)),
 		{Alg, Key} = jose_pem:parse_key(Pem),
 		M#{alg => Alg, key => Key}
 	catch _:_ ->
