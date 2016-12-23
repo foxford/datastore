@@ -96,7 +96,10 @@ access_token(Req) ->
 
 -spec decode_access_token(cowboy_req:req(), map()) -> map().
 decode_access_token(Req, AuthConf) ->
-	datastore:decode_access_token(access_token(Req), AuthConf).
+	case find_access_token(Req) of
+		{ok, Token} -> datastore:decode_access_token(Token, AuthConf);
+		_           -> #{}
+	end.
 
 -spec handle_response(Req, State, HandleSuccess) -> {Result, Req, State}
 	when
