@@ -65,24 +65,24 @@ init(Req, Opts) ->
 %% Internal functions
 %% =============================================================================
 
-handle_request(<<"GET">>, Req, State) ->
-	handle_headers(allow_read_headers(), Req, State);
+handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
+handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET">>, Req0),
-	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Range">>, Req1),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET PUT">>, Req0),
+	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Content-Type, Range">>, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
 handle_request(_, Req, State) ->
-	{stop, cowboy_req:reply(405, Req), State}.
+	{ok, cowboy_req:reply(405, Req), State}.
 
-handle_headers(AllowedHs, #{headers := Hs} =Req, State) ->
-	try with_headers(AllowedHs, Hs) of
+handle_headers(#{method := Method, headers := Hs} =Req, State) ->
+	try with_headers(allow_headers(Method), Hs) of
 		S2headers ->
 			handle_params(Req, State#state{s2reqopts = #{headers => S2headers}})
 	catch
 		T:R ->
 			?ERROR_REPORT([{http_headers, Hs} | datastore_http_log:format_request(Req)], T, R),
-			{stop, cowboy_req:reply(400, Req), State}
+			{ok, cowboy_req:reply(400, Req), State}
 	end.
 
 handle_params(#{method := Method} =Req, State) ->
@@ -92,7 +92,7 @@ handle_params(#{method := Method} =Req, State) ->
 	catch
 		T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-			{stop, cowboy_req:reply(400, Req), State}
+			{ok, cowboy_req:reply(400, Req), State}
 	end.
 
 handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) ->
@@ -104,23 +104,36 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		handle_authorization(Req, State#state{authm = TokenPayload})
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
-		{stop, cowboy_req:reply(401, Req), State}
+		{ok, cowboy_req:reply(401, Req), State}
 	end.
 
-handle_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
+handle_authorization(#{method := <<"GET">>} =Req, State) -> handle_read_authorization(Req, State);
+handle_authorization(#{method := <<"PUT">>} =Req, State) -> handle_write_authorization(Req, State).
+
+handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Rdesc) of
 		{ok, #{read := true}} -> handle_read(Req, State);
-		_                     -> {stop, cowboy_req:reply(403, Req), State}
+		_                     -> {ok, cowboy_req:reply(403, Req), State}
 	catch
 		T:R ->
 		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-		{stop, cowboy_req:reply(422, Req), State}
+		{ok, cowboy_req:reply(422, Req), State}
+	end.
+
+handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
+	try datastore:authorize(Bucket, AuthM, Rdesc) of
+		{ok, #{write := true}} -> handle_write(Req, State);
+		_                      -> {ok, cowboy_req:reply(403, Req), State}
+	catch
+		T:R ->
+		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+		{ok, cowboy_req:reply(422, Req), State}
 	end.
 
 handle_read(Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := Pool, options := S2opts, handler := Hmod}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, handler := Hmod}} = Rdesc,
 
-	Pid = gunc_pool:lock(Pool),
+	Pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:get(Pid, Bucket, Key, S2reqopts, S2opts),
 	Req1 =
 		try handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, ?REQUEST_TIMEOUT, Req0)
@@ -128,8 +141,35 @@ handle_read(Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Buc
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
 			cowboy_req:reply(422, Req0)
 		end,
-	gunc_pool:unlock(Pool, Pid),
+	gunc_pool:unlock(S2pool, Pid),
 	{ok, Req1, State}.
+
+handle_write(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
+	S2pid = gunc_pool:lock(S2pool),
+	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
+	Req1 = read_body(S2pid, Ref, Req0),
+	MaybeOk = riaks2c_object:await_put(S2pid, Ref),
+	gunc_pool:unlock(S2pool, S2pid),
+
+	Req2 =
+		case MaybeOk of
+			ok                             -> cowboy_req:reply(200, Req1);
+			{error, {bad_bucket, _Bucket}} -> cowboy_req:reply(404, Req1);
+			_                              -> cowboy_req:reply(422, Req1)
+		end,
+	{ok, Req2, State}.
+
+-spec read_body(pid(), reference(), Req) -> Req when Req :: cowboy_req:req().
+read_body(Pid, Ref, Req0) ->
+	case cowboy_req:read_body(Req0) of
+		{ok, Data, Req1} ->
+			gun:data(Pid, Ref, fin, Data),
+			Req1;
+		{more, Data, Req1} ->
+			gun:data(Pid, Ref, nofin, Data),
+			read_body(Pid, Ref, Req1)
+	end.
 
 -spec handle_read_stream(module(), binary(), binary(), map(), pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
 handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, Req) ->
@@ -158,14 +198,18 @@ handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, Req) ->
 			exit({bad_riaks2_response_status, Status})
 	end.
 
--spec allow_read_headers() -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
-allow_read_headers() ->
+-spec allow_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
+allow_headers(<<"GET">>) ->
 	[	{<<"range">>, fun cow_http_hd:parse_range/1},
-		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ].
+		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ];
+allow_headers(<<"PUT">>) ->
+	[ {<<"content-type">>, fun cow_http_hd:parse_content_type/1},
+		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
+		{<<"content-md5">>, fun(_) -> ok end}	].
 
 -spec parse_params(binary(), [{binary(), binary() | true}]) -> map().
-parse_params(<<"GET">>, Qs) ->
-	parse_read_params(Qs, #{}).
+parse_params(<<"GET">>, Qs) -> parse_read_params(Qs, #{});
+parse_params(<<"PUT">>, _)  -> #{}.
 
 -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
 parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
