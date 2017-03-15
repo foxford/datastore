@@ -59,7 +59,7 @@
 start() ->
 	HttpOpts = datastore:http_options(),
 	HttpdRequiredOpts =
-		#{stream_handler => {datastore_streamh, supervisor},
+		#{stream_handlers => [datastore_streamh],
 			middlewares => [datastore_httpm_cors, cowboy_router, cowboy_handler],
 			env => #{dispatch => dispatch(), allowed_origins => datastore:allowed_origins()}},
 	HttpdStart =
@@ -156,7 +156,7 @@ control_response(Req, State, ContentType, HandleSuccess, HandleFailure) ->
 	when
 		Req             :: cowboy_req:req(),
 		State           :: any(),
-		HandleSuccess   :: fun((Req, any()) -> {Result, Req, State}),
+		HandleSuccess   :: fun((any(), Req) -> {Result, Req, State}),
 		Result          :: true | stop | binary().
 handle_payload(Req, State, HandleSuccess) ->
 	handle_payload(Req, State, #{}, HandleSuccess).
@@ -166,7 +166,7 @@ handle_payload(Req, State, HandleSuccess) ->
 		Req             :: cowboy_req:req(),
 		State           :: any(),
 		ReadOpts        :: map(),
-		HandleSuccess   :: fun((Req, any()) -> {Result, Req, State}),
+		HandleSuccess   :: fun((any(), Req) -> {Result, Req, State}),
 		Result          :: true | stop | binary().
 handle_payload(Req, State, ReadOpts, HandleSuccess) ->
 	handle_payload(Req, State, ReadOpts, ?DEFAULT_CONTENT_TYPE, HandleSuccess).
@@ -177,7 +177,7 @@ handle_payload(Req, State, ReadOpts, HandleSuccess) ->
 		State           :: any(),
 		ReadOpts        :: map(),
 		RespContentType :: binary(),
-		HandleSuccess   :: fun((Req, any()) -> {Result, Req, State}),
+		HandleSuccess   :: fun((any(), Req) -> {Result, Req, State}),
 		Result          :: true | stop | binary().
 handle_payload(Req, State, ReadOpts, RespContentType, HandleSuccess) ->
 	HandleFailure =
@@ -195,7 +195,7 @@ handle_payload(Req, State, ReadOpts, RespContentType, HandleSuccess) ->
 		Req             :: cowboy_req:req(),
 		State           :: any(),
 		ReadOpts        :: map(),
-		HandleSuccess   :: fun((Req, any()) -> {Result, Req, State}),
+		HandleSuccess   :: fun((any(), Req) -> {Result, Req, State}),
 		HandleFailure   :: fun((payload(), Req, any()) -> {Result, Req, State}),
 		Result          :: true | stop | binary().
 control_payload(Req0, State, ReadOpts, HandleSuccess, HandleFailure) ->
@@ -225,7 +225,7 @@ encode_payload(ContentType, _Body)                      -> error({unsupported_co
 routes() ->
 	Opts = #{resources => datastore:resources(), authentication => datastore:authentication()},
 	Objects =
-		[{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts}],
+		[	{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts} ],
 
 	%Pages =
 	%	[{"/api[/v1]/pages/:bucket/[...]", datastore_httph_pages, #{}}],
