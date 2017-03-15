@@ -36,10 +36,10 @@
 
 %% Types
 -record(state, {
-	authconf        :: map(),
 	r               :: map(),
-	key             :: iodata(),
+	authconf        :: map(),
 	bucket          :: iodata(),
+	key             :: iodata(),
 	params    = #{} :: map(),
 	s2reqopts = #{} :: riaks2c_http:request_options(),
 	authm     = #{} :: map()
@@ -54,8 +54,8 @@ init(Req, Opts) ->
 	#{authentication := AuthConf, resources := R} = Opts,
 	State =
 		#state{
-			authconf = AuthConf,
 			r = R,
+			authconf = AuthConf,
 			key = cowboy_req:binding(key, Req),
 			bucket = cowboy_req:binding(bucket, Req)},
 
@@ -108,7 +108,7 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 	end.
 
 handle_authorization(Req, #state{r = Resources, bucket = Bucket, key = Key, authm = AuthM} =State) ->
-	try datastore:authorize(Bucket, Key, AuthM, Resources) of
+	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Resources) of
 		{ok, #{read := true}} -> handle_read(Req, State);
 		_                     -> {stop, cowboy_req:reply(403, Req), State}
 	catch

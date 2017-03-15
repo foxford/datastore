@@ -32,7 +32,8 @@
 	unix_time_us/1,
 	priv_path/1,
 	conf_path/1,
-	authorize/4,
+	authorize/3,
+	aclobject_key/2,
 	decode_access_token/2
 ]).
 
@@ -87,17 +88,26 @@ conf_path(Path) ->
 		_        -> Path
 	end.
 
--spec authorize(binary(), binary(), map(), map()) -> {ok, map()}.
-authorize(Bucket, Key, AuthM, Resources) ->
-	#{account_aclsubject := #{bucket := AclSubBucket, pool := Pool},
-		object_aclobject := #{bucket := AclObjBucket}} = Resources,
+-spec authorize(binary(), map(), map()) -> {ok, map()} | error.
+authorize(Okey, AuthM, Resources) ->
+	#{account_aclsubject := #{bucket := Sb, pool := Pool},
+		object_aclobject := #{bucket := Ob},
+		anonymous_aclgroup := AnonymousGroupName,
+		admin_aclgroup := AdminGroupName} = Resources,
 
-	ObjKey = <<Bucket/binary, $:, Key/binary>>,
-	SubKey = maps:get(<<"sub">>, AuthM, <<"anonymous">>),
+	AdminAccess = {AdminGroupName, #{read => true, write => true}},
 	Pid = riakc_pool:lock(Pool),
-	Result = riakacl:authorize(Pid, AclSubBucket, SubKey, AclObjBucket, ObjKey, riakacl_rwaccess),
+	Result =
+		case maps:find(<<"sub">>, AuthM) of
+			{ok, Skey} -> riakacl:authorize_predefined_object(Pid, Sb, Skey, Ob, Okey, [AdminAccess], riakacl_rwaccess);
+			error      -> riakacl:authorize_predefined_subject(Pid, [AnonymousGroupName], Ob, Okey, riakacl_rwaccess)
+		end,
 	riakc_pool:unlock(Pool, Pid),
 	Result.
+
+-spec aclobject_key(binary(), binary() | undefined) -> binary().
+aclobject_key(Bucket, undefined) -> Bucket;
+aclobject_key(Bucket, Key)       -> <<Bucket/binary, $:, Key/binary>>.
 
 -spec decode_access_token(binary(), map()) -> map().
 decode_access_token(Token, AuthConf) ->
@@ -205,7 +215,9 @@ resources() ->
 							bucket => {<<"riakacl_subject_t">>, <<"datastore-account-aclsubject">>}},
 					object_aclobject =>
 						#{pool => kv_protobuf,
-							bucket => {<<"riakacl_object_t">>, <<"datastore-object-aclobject">>}}}
+							bucket => {<<"riakacl_object_t">>, <<"datastore-object-aclobject">>}},
+					anonymous_aclgroup => <<"anonymous">>,
+					admin_aclgroup => <<"admin">>}
 			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
 	end.
 

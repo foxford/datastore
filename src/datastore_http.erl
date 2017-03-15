@@ -226,8 +226,11 @@ routes() ->
 	Opts = #{resources => datastore:resources(), authentication => datastore:authentication()},
 	Objects =
 		[	{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts} ],
+	ACL =
+		[	{"/api[/v1]/buckets/:bucket/acl", datastore_httph_acls, Opts},
+			{"/api[/v1]/buckets/:bucket/objects/:key/acl", datastore_httph_acls, Opts} ],
 
 	%Pages =
 	%	[{"/api[/v1]/pages/:bucket/[...]", datastore_httph_pages, #{}}],
 
-	[{'_', Objects}].
+	[{'_', Objects ++ ACL}].
