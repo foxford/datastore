@@ -23,6 +23,7 @@
 %% ----------------------------------------------------------------------------
 
 -module(datastore_streamh).
+-behaviour(cowboy_stream).
 
 -include("datastore_log.hrl").
 
@@ -44,14 +45,14 @@ init(StreamId, Req, Opts) ->
 data(StreamID, IsFin, Data, State) ->
 	cowboy_stream_h:data(StreamID, IsFin, Data, State).
 
-info(StreamId, {response, Status, Headers, _Body} =Response, State) ->
+info(StreamId, {response, Status, Headers, _Body} =Resp, State) ->
 	?INFO_REPORT(datastore_http_log:format_response(StreamId, Status, Headers)),
-	cowboy_stream_h:info(StreamId, Response, State);
-info(StreamId, {headers, Status, Headers} =Response, State) ->
+	cowboy_stream_h:info(StreamId, Resp, State);
+info(StreamId, {headers, Status, Headers} =Req, State) ->
 	?INFO_REPORT(datastore_http_log:format_response(StreamId, Status, Headers)),
-	cowboy_stream_h:info(StreamId, Response, State);
-info(StreamId, Message, State) ->
-	cowboy_stream_h:info(StreamId, Message, State).
+	cowboy_stream_h:info(StreamId, Req, State);
+info(StreamId, Info, State) ->
+	cowboy_stream_h:info(StreamId, Info, State).
 
 terminate(StreamId, Reason, State) ->
 	cowboy_stream_h:terminate(StreamId, Reason, State).

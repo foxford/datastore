@@ -1,5 +1,3 @@
-.PHONY: plt-hotfix
-
 PROJECT = datastore
 PROJECT_DESCRIPTION = Data store.
 PROJECT_VERSION = 0.1.0
@@ -20,7 +18,7 @@ dep_gunc_pool = git git://github.com/manifest/gun-connection-pool.git v0.1.0
 dep_riaks2c = git git://github.com/manifest/riak-s2-erlang-client.git v0.1.0
 dep_riakacl = git git://github.com/manifest/riak-acl.git master
 dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.1
-dep_cowboy = git git://github.com/ninenines/cowboy.git 7b248e5163fd852d6defe967318da849433dadb1
+dep_cowboy = git git://github.com/ninenines/cowboy.git 0d81dc04f1d2194027ab918835b16a9fc0bceb9b
 
 SHELL_DEPS = tddreloader
 SHELL_OPTS = \
@@ -29,10 +27,3 @@ SHELL_OPTS = \
 	-config rel/sys
 
 include erlang.mk
-
-define REMOVE_FROM_PLT
-	$(verbose) dialyzer --remove_from_plt --plt .$(PROJECT).plt -r "$(CURDIR)/$(1)" | true
-endef
-
-plt-hotfix:
-	$(call REMOVE_FROM_PLT deps/cowboy/ebin/cowboy_rest.beam)
