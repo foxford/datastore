@@ -1,5 +1,13 @@
 -module(datastore_acl).
 
+%% CRUD API
+-export([
+	list/3,
+	update_list/4,
+	read/4,
+	update/5
+]).
+
 %% API
 -export([
 	groups/1,
@@ -9,6 +17,48 @@
 	parse_group/1,
 	parse_group_data/1
 ]).
+
+%% =============================================================================
+%% CRUD API
+%% =============================================================================
+
+-spec list(binary(), binary(), map()) -> [map()].
+list(Bucket, Key, Rdesc) ->
+	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+	Okey = datastore:aclobject_key(Bucket, Key),
+	Pid = gunc_pool:lock(Pool),
+	E = riakacl_entry:get(Pid, Ob, Okey),
+	gunc_pool:unlock(Pool, Pid),
+	groups(E).
+
+%% We have 'update_list' instead of 'create' because we want to add/update
+%% a list of ACL groups by one request.
+-spec update_list(binary(), binary(), [{binary(), riakacl_group:group()}], map()) -> [map()].
+update_list(Bucket, Key, Groups, Rdesc) ->
+	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+	Okey = datastore:aclobject_key(Bucket, Key),
+	Pid = gunc_pool:lock(Pool),
+	E = riakacl_entry:put_groups(Pid, Ob, Okey, Groups, [return_body]),
+	gunc_pool:unlock(Pool, Pid),
+	groups(E).
+
+-spec read(binary(), binary(), binary(), map()) -> {ok, map()} | error.
+read(Bucket, Key, Gname, Rdesc) ->
+	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+	Okey = datastore:aclobject_key(Bucket, Key),
+	Pid = gunc_pool:lock(Pool),
+	E = riakacl_entry:get(Pid, Ob, Okey),
+	gunc_pool:unlock(Pool, Pid),
+	find_group(Gname, E).
+
+-spec update(binary(), binary(), binary(), riakacl_group:group(), map()) -> map().
+update(Bucket, Key, Gname, Gdata, Rdesc) ->
+	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+	Okey = datastore:aclobject_key(Bucket, Key),
+	Pid = gunc_pool:lock(Pool),
+	E = riakacl_entry:put_groups(Pid, Ob, Okey, [{Gname, Gdata}], [return_body]),
+	gunc_pool:unlock(Pool, Pid),
+	group(Gname, E).
 
 %% =============================================================================
 %% API
