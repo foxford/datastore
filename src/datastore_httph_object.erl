@@ -36,7 +36,7 @@
 
 %% Types
 -record(state, {
-	r               :: map(),
+	rdesc           :: map(),
 	authconf        :: map(),
 	bucket          :: iodata(),
 	key             :: iodata(),
@@ -51,10 +51,10 @@
 
 init(Req, Opts) ->
 	#{method := Method} = Req,
-	#{authentication := AuthConf, resources := R} = Opts,
+	#{authentication := AuthConf, resources := Rdesc} = Opts,
 	State =
 		#state{
-			r = R,
+			rdesc = Rdesc,
 			authconf = AuthConf,
 			key = cowboy_req:binding(key, Req),
 			bucket = cowboy_req:binding(bucket, Req)},
@@ -107,8 +107,8 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		{stop, cowboy_req:reply(401, Req), State}
 	end.
 
-handle_authorization(Req, #state{r = Resources, bucket = Bucket, key = Key, authm = AuthM} =State) ->
-	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Resources) of
+handle_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
+	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Rdesc) of
 		{ok, #{read := true}} -> handle_read(Req, State);
 		_                     -> {stop, cowboy_req:reply(403, Req), State}
 	catch
@@ -117,8 +117,8 @@ handle_authorization(Req, #state{r = Resources, bucket = Bucket, key = Key, auth
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-handle_read(Req0, #state{r = Resources, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := Pool, options := S2opts, handler := Hmod}} = Resources,
+handle_read(Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := Pool, options := S2opts, handler := Hmod}} = Rdesc,
 
 	Pid = gunc_pool:lock(Pool),
 	Ref = riaks2c_object:get(Pid, Bucket, Key, S2reqopts, S2opts),
