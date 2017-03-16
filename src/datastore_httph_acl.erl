@@ -8,6 +8,7 @@
 	is_authorized/2,
 	forbidden/2,
 	resource_exists/2,
+	delete_resource/2,
 	content_types_provided/2,
 	content_types_accepted/2,
 	allowed_methods/2,
@@ -24,7 +25,7 @@
 -record(state, {
 	rdesc              :: map(),
 	authconf           :: map(),
-	aclgroup           :: iodata(),
+	group              :: iodata(),
 	bucket             :: iodata(),
 	key    = undefined :: undefined | iodata(),
 	authm  = #{}       :: map(),
@@ -36,12 +37,12 @@
 %% =============================================================================
 
 init(Req, Opts) ->
-	#{authentication := AuthConf, resources := R} = Opts,
+	#{authentication := AuthConf, resources := Rdesc} = Opts,
 	State =
 		#state{
-			rdesc = R,
+			rdesc = Rdesc,
 			authconf = AuthConf,
-			aclgroup = cowboy_req:binding(aclgroup, Req),
+			group = cowboy_req:binding(group, Req),
 			bucket = cowboy_req:binding(bucket, Req),
 			key = cowboy_req:binding(key, Req)},
 	{cowboy_rest, Req, State}.
@@ -58,7 +59,7 @@ is_authorized(Req, #state{authconf = AuthConf} =State) ->
 			{{false, datastore_http:access_token_type()}, Req, State}
 	end.
 
-forbidden(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
+forbidden(Req, #state{bucket = Bucket, authm = AuthM, rdesc = Rdesc} =State) ->
 	try datastore:authorize(Bucket, AuthM, Rdesc) of
 		{ok, #{write := true}} -> {false, Req, State};
 		_                      -> {true, Req, State}
@@ -67,14 +68,19 @@ forbidden(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-resource_exists(Req, #state{bucket = Bucket, key = Key, aclgroup = Gname, rdesc = Rdesc} =State) ->
+resource_exists(Req, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
 	try datastore_acl:read(Bucket, Key, Gname, Rdesc) of
-		{ok, Val} -> {true, Req, State#state{r = Val}};
-		_         -> {false, Req, State}
+		{ok, R} -> {true, Req, State#state{r = R}};
+		_       -> {false, Req, State}
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
+
+delete_resource(Req, #state{bucket = Bucket, key = Key, group = Gname, r = R, rdesc = Rdesc} =State) ->
+	datastore_http:handle_response(Req, State, fun() ->
+		jsx:encode(datastore_acl:delete(Bucket, Key, Gname, R, Rdesc))
+	end).
 
 content_types_provided(Req, State) ->
 	Handlers = [{{<<"application">>, <<"json">>, '*'}, to_json}],
@@ -85,11 +91,11 @@ content_types_accepted(Req, State) ->
 	{Handlers, Req, State}.
 
 allowed_methods(Req, State) ->
-	Methods = [<<"GET">>, <<"PUT">>, <<"OPTIONS">>],
+	Methods = [<<"GET">>, <<"PUT">>, <<"DELETE">>, <<"OPTIONS">>],
 	{Methods, Req, State}.
 
 options(Req0, State) ->
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, PUT">>, Req0),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, PUT, DELETE">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Content-Type">>, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, Req3, State}.
@@ -98,7 +104,7 @@ options(Req0, State) ->
 %% Content callbacks
 %% =============================================================================
 
-from_json(Req0, #state{bucket = Bucket, key = Key, aclgroup = Gname, rdesc = Rdesc} =State) ->
+from_json(Req0, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
 	datastore_http:handle_payload(Req0, State, fun(Payload, Req1) ->
 		datastore_http:handle_response(Req1, State, fun() ->
 			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_group_data(jsx:decode(Payload)), Rdesc)

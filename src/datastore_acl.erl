@@ -5,7 +5,8 @@
 	list/3,
 	update_list/4,
 	read/4,
-	update/5
+	update/5,
+	delete/5
 ]).
 
 %% API
@@ -59,6 +60,15 @@ update(Bucket, Key, Gname, Gdata, Rdesc) ->
 	E = riakacl_entry:put_groups(Pid, Ob, Okey, [{Gname, Gdata}], [return_body]),
 	gunc_pool:unlock(Pool, Pid),
 	group(Gname, E).
+
+-spec delete(binary(), binary(), binary(), map(), map()) -> map().
+delete(Bucket, Key, Gname, R, Rdesc) ->
+	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+	Okey = datastore:aclobject_key(Bucket, Key),
+	Pid = gunc_pool:lock(Pool),
+	_ = riakacl_entry:remove_groups(Pid, Ob, Okey, [Gname]),
+	gunc_pool:unlock(Pool, Pid),
+	R.
 
 %% =============================================================================
 %% API
