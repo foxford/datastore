@@ -28,9 +28,12 @@ list(Bucket, Key, Rdesc) ->
 	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
 	Okey = datastore:aclobject_key(Bucket, Key),
 	Pid = gunc_pool:lock(Pool),
-	E = riakacl_entry:get(Pid, Ob, Okey),
+	MaybeE = riakacl_entry:find(Pid, Ob, Okey),
 	gunc_pool:unlock(Pool, Pid),
-	groups(E).
+	case MaybeE of
+		{ok, E} -> groups(E);
+		_       -> []
+	end.
 
 %% We have 'update_list' instead of 'create' because we want to add/update
 %% a list of ACL groups by one request.
@@ -48,9 +51,12 @@ read(Bucket, Key, Gname, Rdesc) ->
 	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
 	Okey = datastore:aclobject_key(Bucket, Key),
 	Pid = gunc_pool:lock(Pool),
-	E = riakacl_entry:get(Pid, Ob, Okey),
+	MaybeE = riakacl_entry:find(Pid, Ob, Okey),
 	gunc_pool:unlock(Pool, Pid),
-	find_group(Gname, E).
+	case MaybeE of
+		{ok, E} -> find_group(Gname, E);
+		_       -> error
+	end.
 
 -spec update(binary(), binary(), binary(), riakacl_group:group(), map()) -> map().
 update(Bucket, Key, Gname, Gdata, Rdesc) ->

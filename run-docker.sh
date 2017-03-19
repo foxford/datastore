@@ -12,7 +12,10 @@ ULIMIT_FD=262144
 function CREATE_DEVELOP_ENVIRONMENT() {
 	local DOCKER_MACHINE_IP=$(docker-machine ip)
 	local DOCKER_IP=${DOCKER_MACHINE_IP:-'localhost'}
-	printf "{s2_http, #{host => \"%s\", port => %s}}.\n" "${DOCKER_IP}" "${DOCKER_RIAKS2_HTTP_PORT}" > "${DEVELOP_ENVIRONMENT}"
+	printf \
+		"#{s2_http => #{host => \"%s\", port => %s}}." \
+		"${DOCKER_IP}" "${DOCKER_RIAKS2_HTTP_PORT}" \
+		> "${DEVELOP_ENVIRONMENT}"
 }
 
 function CREATE_RIAKS2_USER() {
@@ -34,7 +37,8 @@ read -r DOCKER_RUN_COMMAND <<-EOF
 		local SECRET="\${3}"; \
 		local HOST="s3.amazonaws.com"; \
 		local CONFIG_FILE="${PROJECT_DIR}/${DEVELOP_ENVIRONMENT}"; \
-		printf "{\${KEY}, #{id => <<\"%s\">>, secret => <<\"%s\">>, host => <<\"%s\">>}}.\n" "\${ID}" "\${SECRET}" "\${HOST}" >> "\${CONFIG_FILE}"; \
+		cat "\${CONFIG_FILE}" | perl -pe "s/..$/, \${KEY} => #{id => <<\"\${ID}\">>, secret => <<\"\${SECRET}\">>, host => <<\"\${HOST}\">>}}./" > "\${CONFIG_FILE}.tmp"; \
+		mv "\${CONFIG_FILE}.tmp" "\${CONFIG_FILE}"; \
 	} \
 	&& service rsyslog start \
 	&& riak start \

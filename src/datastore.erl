@@ -123,8 +123,8 @@ decode_access_token(Token, AuthConf) ->
 http_options() ->
 	Default =
 		[	{port, 8443},
-			{certfile, "priv/ssl/datastore.crt"},
-			{keyfile, "priv/ssl/datastore.key"} ],
+			{certfile, conf_path(<<"ssl/datastore.crt">>)},
+			{keyfile, conf_path(<<"ssl/datastore.key">>)} ],
 	application:get_env(?APP, ?FUNCTION_NAME, Default).
 
 -spec httpd_acceptor_pool_size() -> non_neg_integer().
@@ -145,10 +145,11 @@ riak_connection_pools() ->
 		{ok, Val} -> Val;
 		_ ->
 			%% Getting default values from the Docker environment
-			%% configuration file, if it's available.
+			%% variable, if it's available.
 			try
-				{ok, Conf} = file:consult("deps/riakacl/.develop-environment"),
-				{_, #{host := Host, port := Port}} = lists:keyfind(kv_protobuf, 1, Conf),
+				{ok, S, _} = erl_scan:string(os:getenv("RIAKACL_DEVELOP_ENVIRONMENT")),
+				{ok, Conf} = erl_parse:parse_term(S),
+				#{kv_protobuf := #{host := Host, port := Port}} = Conf,
 				[	#{name => kv_protobuf,
 						size => 5,
 						connection =>
@@ -164,10 +165,11 @@ gun_connection_pools() ->
 		{ok, Val} -> Val;
 		_ ->
 			%% Getting default values from the Docker environment
-			%% configuration file, if it's available.
+			%% variable, if it's available.
 			try
-				{ok, Conf} = file:consult(".develop-environment"),
-				{_, #{host := Host, port := Port}} = lists:keyfind(s2_http, 1, Conf),
+				{ok, S, _} = erl_scan:string(os:getenv("DEVELOP_ENVIRONMENT")),
+				{ok, Conf} = erl_parse:parse_term(S),
+				#{s2_http := #{host := Host, port := Port}} = Conf,
 				[	#{name => s2_http,
 						size => 100,
 						connection =>
@@ -179,12 +181,6 @@ gun_connection_pools() ->
 
 -spec authentication() -> map().
 authentication() ->
-	DefaultVerifyOpts =
-		#{parse_header => map,
-			parse_payload => map,
-			parse_signature => binary,
-			verify => [exp, nbf, iat],
-			leeway => 1},
 	%% Examples:
 	%% #{<<"iss">> =>
 	%% 		#{keyfile => <<"keys/example.pem">>,
@@ -192,7 +188,26 @@ authentication() ->
 	%% #{{<<"iss">>, <<"kid">>} =>
 	%% 		#{keyfile => <<"keys/example.pem">>,
 	%% 			verify_options => DefaultVerifyOpts}}
-	M = application:get_env(?APP, ?FUNCTION_NAME, #{}),
+	DevelopOpts =
+		#{<<"idp.example.org">> =>
+				#{keyfile => conf_path(<<"keys/idp-example.pub.pem">>),
+					verify_options => #{verify => [exp]}}},
+	DefaultVerifyOpts =
+		#{parse_header => map,
+			parse_payload => map,
+			parse_signature => binary,
+			verify => [exp, nbf, iat],
+			leeway => 1},
+	M =
+		case application:get_env(?APP, ?FUNCTION_NAME, #{}) of
+			{ok, Val} -> Val;
+			_ ->
+				%% Getting development values, if environment variable is defined.
+				case os:getenv("DEVELOP_ENVIRONMENT") of
+					false -> error({missing_develop_environment, ?FUNCTION_NAME, required});
+					_     -> DevelopOpts
+				end
+		end,
 	try configure_auth(M, DefaultVerifyOpts)
 	catch throw:R -> error({invalid_authentication_config, R, M}) end.
 
@@ -202,10 +217,11 @@ resources() ->
 		{ok, Val} -> Val;
 		_ ->
 			%% Getting default values from the Docker environment
-			%% configuration file, if it's available.
+			%% variable, if it's available.
 			try
-				{ok, Conf} = file:consult(".develop-environment"),
-				{_, UserOpts} = lists:keyfind(s2_user, 1, Conf),
+				{ok, S, _} = erl_scan:string(os:getenv("DEVELOP_ENVIRONMENT")),
+				{ok, Conf} = erl_parse:parse_term(S),
+				#{s2_user := UserOpts} = Conf,
 				#{object =>
 						#{pool => s2_http,
 							options => UserOpts,

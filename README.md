@@ -1,5 +1,7 @@
 # Data Store
 
+[![Build Status][travis-img]][travis]
+
 Highly available, scalable and simple to use object storage on top of Riak S2
 
 
@@ -25,3 +27,5 @@ $ make app shell
 The source code is provided under the terms of [the MIT license][license].
 
 [license]:http://www.opensource.org/licenses/MIT
+[travis]:https://travis-ci.org/manifest/datastore?branch=master
+[travis-img]:https://secure.travis-ci.org/manifest/datastore.png?branch=master

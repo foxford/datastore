@@ -20,6 +20,9 @@ dep_riakacl = git git://github.com/manifest/riak-acl.git master
 dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.1
 dep_cowboy = git git://github.com/ninenines/cowboy.git 0d81dc04f1d2194027ab918835b16a9fc0bceb9b
 
+TEST_DEPS = ct_helper
+dep_ct_helper = git git://github.com/ninenines/ct_helper.git master
+
 SHELL_DEPS = tddreloader
 SHELL_OPTS = \
 	-eval 'application:ensure_all_started($(PROJECT), permanent)' \
@@ -27,3 +30,6 @@ SHELL_OPTS = \
 	-config rel/sys
 
 include erlang.mk
+
+export DEVELOP_ENVIRONMENT = $(shell if [ -f .develop-environment ]; then cat .develop-environment; fi)
+export RIAKACL_DEVELOP_ENVIRONMENT = $(shell if [ -f deps/riakacl/.develop-environment ]; then cat deps/riakacl/.develop-environment; fi)
