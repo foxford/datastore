@@ -91,7 +91,6 @@ list(Config) ->
 	KeyNoGroups = ?config(object_nogroups, Config),
 	KeyNotExist = datastore_cth:make_key(),
 	AuthorizationH = datastore_cth:authorization_header(admin, Config),
-	Pid = datastore_cth:gun_open(Config),
 	Test =
 		[	%% bucket w/ groups
 			[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
@@ -106,11 +105,30 @@ list(Config) ->
 			%% object doesn't exist
 			[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl">>] ],
 
+	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		{200, _Hs, L} = datastore_cth:gun_await_json(Pid, Ref),
 		[#{<<"id">> := _, <<"data">> := _} =Obj || Obj <- L]
 	end || Path <- Test].
+
+%% Access is graned only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+list_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(object, Config),
+	Allowed = [bucket_writer, admin],
+	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
+	Test =
+		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
+			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		St = Status(A),
+		Ref = gun:request(Pid, <<"GET">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || Path <- Test, A <- datastore_cth:accounts()].
 
 %% Adds or updates a list of ACL groups.
 %% Returns the modified list of ACL groups.
@@ -127,7 +145,6 @@ update_list(Config) ->
 	GroupId = <<"test-group">>,
 	GroupAccess = <<"--">>,
 	Payload = jsx:encode([#{id => GroupId, data => #{access => GroupAccess, <<"exp">> => 32503680000}}]),
-	Pid = datastore_cth:gun_open(Config),
 	Test =
 		[	%% bucket w/ groups
 			[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
@@ -142,6 +159,7 @@ update_list(Config) ->
 			%% object doesn't exist
 			[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl">>] ],
 
+	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Ref = gun:request(Pid, <<"POST">>, Path, [AuthorizationH, ContentTypeH], Payload),
 		{200, _Hs, L} = datastore_cth:gun_await_json(Pid, Ref),
@@ -151,6 +169,26 @@ update_list(Config) ->
 					Id =:= GroupId andalso Access =:= GroupAccess
 				end, L)
 	end || Path <- Test].
+
+%% Access is graned only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+update_list_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(object, Config),
+	ContentTypeH = {<<"content-type">>, <<"application/json">>},
+	Payload = jsx:encode([#{id => <<"test-group">>, data => #{access => <<"--">>, <<"exp">> => 32503680000}}]),
+	Allowed = [bucket_writer, admin],
+	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
+	Test =
+		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
+			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		St = Status(A),
+		Ref = gun:request(Pid, <<"POST">>, Path, [datastore_cth:authorization_header(A, Config), ContentTypeH], Payload),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || Path <- Test, A <- datastore_cth:accounts()].
 
 %% Returns the specified ACL group.
 %% The 404 'Not Found' error is returned for buckets or objects that haven't exist yet
@@ -165,7 +203,6 @@ read(Config) ->
 	AuthorizationH = datastore_cth:authorization_header(admin, Config),
 	GroupBucket = <<"bucket.reader">>,
 	GroupObject = <<"object.reader">>,
-	Pid = datastore_cth:gun_open(Config),
 	Test =
 		[	%% bucket w/ groups
 			{[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket], 200},
@@ -180,6 +217,7 @@ read(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 404} ],
 
+	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Group = lists:last(Path),
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
@@ -188,6 +226,26 @@ read(Config) ->
 			404 -> {404, _Hs, <<>>} = datastore_cth:gun_await(Pid, Ref)
 		end
 	end || {Path, StatusCode} <- Test].
+
+%% Access is graned only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+read_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(object, Config),
+	GroupBucket = <<"bucket.reader">>,
+	GroupObject = <<"object.reader">>,
+	Allowed = [bucket_writer, admin],
+	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
+	Test =
+		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
+			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		St = Status(A),
+		Ref = gun:request(Pid, <<"GET">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || Path <- Test, A <- datastore_cth:accounts()].
 
 %% Adds or updates the specified ACL group.
 %% Returns the modified ACL group.
@@ -205,7 +263,6 @@ update(Config) ->
 	GroupObject = <<"object.reader">>,
 	GroupAccess = <<"--">>,
 	Payload = jsx:encode(#{access => GroupAccess, <<"exp">> => 32503680000}),
-	Pid = datastore_cth:gun_open(Config),
 	Test =
 		[	%% bucket w/ groups
 			{[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket], 200},
@@ -220,6 +277,7 @@ update(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 201} ],
 
+	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Group = lists:last(Path),
 		Ref = gun:request(Pid, <<"PUT">>, Path, [AuthorizationH, ContentTypeH], Payload),
@@ -228,6 +286,28 @@ update(Config) ->
 			404                            -> {404, _Hs, <<>>} = datastore_cth:gun_await(Pid, Ref)
 		end
 	end || {Path, StatusCode} <- Test].
+
+%% Access is graned only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+update_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(object, Config),
+	ContentTypeH = {<<"content-type">>, <<"application/json">>},
+	GroupBucket = <<"bucket.reader">>,
+	GroupObject = <<"object.reader">>,
+	Payload = jsx:encode(#{access => <<"--">>, <<"exp">> => 32503680000}),
+	Allowed = [bucket_writer, admin],
+	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
+	Test =
+		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
+			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		St = Status(A),
+		Ref = gun:request(Pid, <<"PUT">>, Path, [datastore_cth:authorization_header(A, Config), ContentTypeH], Payload),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || Path <- Test, A <- datastore_cth:accounts()].
 
 %% Removes the specified ACL group.
 %% Returns the removed ACL group.
@@ -244,7 +324,6 @@ delete(Config) ->
 	GroupBucket = <<"bucket.reader">>,
 	GroupObject = <<"object.reader">>,
 	GroupAccess = <<"r-">>,
-	Pid = datastore_cth:gun_open(Config),
 	Test =
 		[	%% bucket w/ groups
 			{[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket], 200},
@@ -259,6 +338,7 @@ delete(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 404} ],
 
+	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Group = lists:last(Path),
 		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
@@ -267,3 +347,24 @@ delete(Config) ->
 			404 -> {404, _Hs, <<>>} = datastore_cth:gun_await(Pid, Ref)
 		end
 	end || {Path, StatusCode} <- Test].
+
+%% Access is graned only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+delete_permissions_bucker_writer(Config) -> do_delete_permissions(200, [bucket_writer], Config).
+delete_permissions_admin(Config)         -> do_delete_permissions(200, [admin], Config).
+delete_permissions(Config)               -> do_delete_permissions(403, datastore_cth:accounts() -- [bucket_writer, admin], Config).
+
+do_delete_permissions(Status, Accounts, Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(object, Config),
+	GroupBucket = <<"bucket.reader">>,
+	GroupObject = <<"object.reader">>,
+	Test =
+		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
+			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		Ref = gun:request(Pid, <<"DELETE">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		{Status, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || Path <- Test, A <- Accounts].
