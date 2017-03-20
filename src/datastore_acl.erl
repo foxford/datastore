@@ -93,11 +93,11 @@ parse_groups(L) ->
 
 -spec group(binary(), riakacl_entry:entry()) -> map().
 group(Name, E) ->
-	format_group(Name, riakacl_entry:group_dt(Name, E)).
+	format_group(Name, riakacl_entry:group_rawdt(Name, E)).
 
 -spec find_group(binary(), riakacl_entry:entry()) -> {ok, map()} | error.
 find_group(Name, E) ->
-	case riakacl_entry:find_group_dt(Name, E) of
+	case riakacl_entry:find_group_rawdt(Name, E) of
 		{ok, Raw} -> {ok, format_group(Name, Raw)};
 		error     -> error
 	end.
