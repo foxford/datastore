@@ -188,7 +188,7 @@ authentication() ->
 	%% #{{<<"iss">>, <<"kid">>} =>
 	%% 		#{keyfile => <<"keys/example.pem">>,
 	%% 			verify_options => DefaultVerifyOpts}}
-	DevelopOpts =
+	DevelopConf =
 		#{<<"idp.example.org">> =>
 				#{keyfile => conf_path(<<"keys/idp-example.pub.pem">>),
 					verify_options => #{verify => [exp]}}},
@@ -204,8 +204,8 @@ authentication() ->
 			_ ->
 				%% Getting development values, if environment variable is defined.
 				case os:getenv("DEVELOP_ENVIRONMENT") of
-					false -> error({missing_develop_environment, ?FUNCTION_NAME, required});
-					_     -> DevelopOpts
+					Env when Env =:= false; Env =:= [] -> error({missing_develop_environment, ?FUNCTION_NAME, required});
+					_                                  -> DevelopConf
 				end
 		end,
 	try configure_auth(M, DefaultVerifyOpts)
