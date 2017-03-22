@@ -198,13 +198,14 @@ authentication() ->
 			parse_signature => binary,
 			verify => [exp, nbf, iat],
 			leeway => 1},
+	Default = #{},
 	M =
-		case application:get_env(?APP, ?FUNCTION_NAME, #{}) of
+		case application:get_env(?APP, ?FUNCTION_NAME) of
 			{ok, Val} -> Val;
 			_ ->
 				%% Getting development values, if environment variable is defined.
 				case os:getenv("DEVELOP_ENVIRONMENT") of
-					Env when Env =:= false; Env =:= [] -> error({missing_develop_environment, ?FUNCTION_NAME, required});
+					Env when Env =:= false; Env =:= [] -> Default;
 					_                                  -> DevelopConf
 				end
 		end,
