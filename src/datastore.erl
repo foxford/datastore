@@ -243,8 +243,11 @@ resources() ->
 %% =============================================================================
 
 -spec configure_auth(map(), map()) -> map().
-configure_auth(M, Default) ->
-	maps:map(fun(_Iss, Conf) -> load_auth_key(maps:merge(Default, Conf)) end, M).
+configure_auth(M, DefaultVerifyOpts) ->
+	maps:map(
+		fun(_Iss, Conf) ->
+			load_auth_key(Conf#{verify_options => maps:merge(DefaultVerifyOpts, maps:get(verify_options, Conf, #{}))})
+		end, M).
 
 -spec load_auth_key(map()) -> map().
 load_auth_key(#{alg := _, key := _} =M) -> M;
