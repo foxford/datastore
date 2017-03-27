@@ -29,7 +29,7 @@
 	bucket             :: iodata(),
 	key    = undefined :: undefined | iodata(),
 	authm  = #{}       :: map(),
-	r      = undefined :: undefined | map()
+	rbox   = undefined :: undefined | datastore_acl:rbox()
 }).
 
 %% =============================================================================
@@ -70,16 +70,16 @@ forbidden(Req, #state{bucket = Bucket, authm = AuthM, rdesc = Rdesc} =State) ->
 
 resource_exists(Req, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
 	try datastore_acl:read(Bucket, Key, Gname, Rdesc) of
-		{ok, R} -> {true, Req, State#state{r = R}};
-		_       -> {false, Req, State}
+		{ok, Rbox} -> {true, Req, State#state{rbox = Rbox}};
+		_          -> {false, Req, State}
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-delete_resource(Req, #state{bucket = Bucket, key = Key, group = Gname, r = R, rdesc = Rdesc} =State) ->
+delete_resource(Req, #state{bucket = Bucket, key = Key, group = Gname, rbox = Rbox, rdesc = Rdesc} =State) ->
 	datastore_http:handle_response(Req, State, fun() ->
-		jsx:encode(datastore_acl:delete(Bucket, Key, Gname, R, Rdesc))
+		jsx:encode(datastore_acl:delete(Bucket, Key, Gname, Rbox, Rdesc))
 	end).
 
 content_types_provided(Req, State) ->
@@ -107,11 +107,11 @@ options(Req0, State) ->
 from_json(Req0, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
 	datastore_http:handle_payload(Req0, State, fun(Payload, Req1) ->
 		datastore_http:handle_response(Req1, State, fun() ->
-			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_group_data(jsx:decode(Payload)), Rdesc)
+			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rdesc)
 		end)
 	end).
 
-to_json(Req, #state{r = R} =State) ->
+to_json(Req, #state{group = Gname, rbox = Rbox} =State) ->
 	datastore_http:handle_response(Req, State, fun() ->
-		jsx:encode(R)
+		jsx:encode(datastore_acl:to_map(Gname, Rbox))
 	end).
