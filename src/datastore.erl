@@ -33,7 +33,6 @@
 	priv_path/1,
 	conf_path/1,
 	authorize/3,
-	aclobject_key/2,
 	decode_access_token/2
 ]).
 
@@ -104,10 +103,6 @@ authorize(Okey, AuthM, Rdesc) ->
 		end,
 	riakc_pool:unlock(KVpool, Pid),
 	Result.
-
--spec aclobject_key(binary(), binary() | undefined) -> binary().
-aclobject_key(Bucket, undefined) -> Bucket;
-aclobject_key(Bucket, Key)       -> <<Bucket/binary, $:, Key/binary>>.
 
 -spec decode_access_token(binary(), map()) -> map().
 decode_access_token(Token, AuthConf) ->

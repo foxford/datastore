@@ -68,8 +68,8 @@ forbidden(Req, #state{bucket = Bucket, authm = AuthM, rdesc = Rdesc} =State) ->
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-resource_exists(Req, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
-	try datastore_acl:read(Bucket, Key, Gname, Rdesc) of
+resource_exists(#{method := Method} =Req, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
+	try datastore_acl:read(Bucket, Key, Gname, Rdesc, read_options(Method)) of
 		{ok, Rbox} -> {true, Req, State#state{rbox = Rbox}};
 		_          -> {false, Req, State}
 	catch T:R ->
@@ -104,10 +104,10 @@ options(Req0, State) ->
 %% Content callbacks
 %% =============================================================================
 
-from_json(Req0, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
+from_json(Req0, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc, rbox = Rbox} =State) ->
 	datastore_http:handle_payload(Req0, State, fun(Payload, Req1) ->
 		datastore_http:handle_response(Req1, State, fun() ->
-			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rdesc)
+			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rbox, Rdesc)
 		end)
 	end).
 
@@ -115,3 +115,14 @@ to_json(Req, #state{group = Gname, rbox = Rbox} =State) ->
 	datastore_http:handle_response(Req, State, fun() ->
 		jsx:encode(datastore_acl:to_map(Gname, Rbox))
 	end).
+
+%% =============================================================================
+%% Internal functions
+%% =============================================================================
+
+%% We use strict quorum (pr=quorum) for create or update operations
+%% on ACL entries and sloppy quorum for read operations.
+-spec read_options(binary()) -> [proplists:property()].
+read_options(<<"GET">>)    -> [];
+read_options(<<"PUT">>)    -> [{pr, quorum}];
+read_options(<<"DELETE">>) -> [{pr, quorum}].

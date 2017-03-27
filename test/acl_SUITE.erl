@@ -66,7 +66,7 @@ init_per_testcase(_Test, Config) ->
 	%% Setting up ACL groups
 	KVpid = gunc_pool:lock(KVpool),
 	riakacl:put_object_acl(KVpid, AclObjBucket, Bucket, [{<<"bucket.reader">>, Raccess}, {<<"bucket.writer">>, Waccess}]),
-	riakacl:put_object_acl(KVpid, AclObjBucket, datastore:aclobject_key(Bucket, Key), [{<<"object.reader">>, Raccess}, {<<"object.writer">>, Waccess}]),
+	riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), [{<<"object.reader">>, Raccess}, {<<"object.writer">>, Waccess}]),
 	gunc_pool:unlock(KVpool, KVpid),
 
 	[{bucket, Bucket}, {bucket_nogroups, BucketNoGroups}, {object, Key}, {object_nogroups, KeyNoGroups} | Config].
