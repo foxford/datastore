@@ -88,9 +88,9 @@ conf_path(Path) ->
 	end.
 
 -spec authorize(binary(), map(), map()) -> {ok, map()} | error.
-authorize(Okey, AuthM, Rdesc) ->
-	#{account_aclsubject := #{bucket := Sb, pool := KVpool},
-		object_aclobject := #{bucket := Ob},
+authorize(AclOkey, AuthM, Rdesc) ->
+	#{account_aclsubject := #{bucket := AclSb, pool := KVpool},
+		object_aclobject := #{bucket := AclOb},
 		anonymous_aclgroup := AnonymousGroupName,
 		admin_aclgroup := AdminGroupName} = Rdesc,
 
@@ -98,8 +98,8 @@ authorize(Okey, AuthM, Rdesc) ->
 	Pid = riakc_pool:lock(KVpool),
 	Result =
 		case maps:find(<<"sub">>, AuthM) of
-			{ok, Skey} -> riakacl:authorize_predefined_object(Pid, Sb, Skey, Ob, Okey, [AdminAccess], riakacl_rwaccess);
-			error      -> riakacl:authorize_predefined_subject(Pid, [AnonymousGroupName], Ob, Okey, riakacl_rwaccess)
+			{ok, AclSkey} -> riakacl:authorize_predefined_object(Pid, AclSb, AclSkey, AclOb, AclOkey, [AdminAccess], riakacl_rwaccess);
+			error         -> riakacl:authorize_predefined_subject(Pid, [AnonymousGroupName], AclOb, AclOkey, riakacl_rwaccess)
 		end,
 	riakc_pool:unlock(KVpool, Pid),
 	Result.

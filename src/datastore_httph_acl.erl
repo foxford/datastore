@@ -25,7 +25,7 @@
 -record(state, {
 	rdesc              :: map(),
 	authconf           :: map(),
-	group              :: iodata(),
+	aclgname           :: iodata(),
 	bucket             :: iodata(),
 	key    = undefined :: undefined | iodata(),
 	authm  = #{}       :: map(),
@@ -42,7 +42,7 @@ init(Req, Opts) ->
 		#state{
 			rdesc = Rdesc,
 			authconf = AuthConf,
-			group = cowboy_req:binding(group, Req),
+			aclgname = cowboy_req:binding(aclgname, Req),
 			bucket = cowboy_req:binding(bucket, Req),
 			key = cowboy_req:binding(key, Req)},
 	{cowboy_rest, Req, State}.
@@ -68,8 +68,8 @@ forbidden(Req, #state{bucket = Bucket, authm = AuthM, rdesc = Rdesc} =State) ->
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-resource_exists(#{method := Method} =Req, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc} =State) ->
-	try datastore_acl:read(Bucket, Key, Gname, Rdesc, read_options(Method)) of
+resource_exists(#{method := Method} =Req, #state{bucket = Bucket, key = Key, aclgname = AclGname, rdesc = Rdesc} =State) ->
+	try datastore_acl:read(Bucket, Key, AclGname, Rdesc, read_options(Method)) of
 		{ok, Rbox} -> {true, Req, State#state{rbox = Rbox}};
 		_          -> {false, Req, State}
 	catch T:R ->
@@ -77,9 +77,9 @@ resource_exists(#{method := Method} =Req, #state{bucket = Bucket, key = Key, gro
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-delete_resource(Req, #state{bucket = Bucket, key = Key, group = Gname, rbox = Rbox, rdesc = Rdesc} =State) ->
+delete_resource(Req, #state{bucket = Bucket, key = Key, aclgname = AclGname, rbox = Rbox, rdesc = Rdesc} =State) ->
 	datastore_http:handle_response(Req, State, fun() ->
-		jsx:encode(datastore_acl:delete(Bucket, Key, Gname, Rbox, Rdesc))
+		jsx:encode(datastore_acl:delete(Bucket, Key, AclGname, Rbox, Rdesc))
 	end).
 
 content_types_provided(Req, State) ->
@@ -104,16 +104,16 @@ options(Req0, State) ->
 %% Content callbacks
 %% =============================================================================
 
-from_json(Req0, #state{bucket = Bucket, key = Key, group = Gname, rdesc = Rdesc, rbox = Rbox} =State) ->
+from_json(Req0, #state{bucket = Bucket, key = Key, aclgname = AclGname, rdesc = Rdesc, rbox = Rbox} =State) ->
 	datastore_http:handle_payload(Req0, State, fun(Payload, Req1) ->
 		datastore_http:handle_response(Req1, State, fun() ->
-			datastore_acl:update(Bucket, Key, Gname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rbox, Rdesc)
+			datastore_acl:update(Bucket, Key, AclGname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rbox, Rdesc)
 		end)
 	end).
 
-to_json(Req, #state{group = Gname, rbox = Rbox} =State) ->
+to_json(Req, #state{aclgname = AclGname, rbox = Rbox} =State) ->
 	datastore_http:handle_response(Req, State, fun() ->
-		jsx:encode(datastore_acl:to_map(Gname, Rbox))
+		jsx:encode(datastore_acl:to_map(AclGname, Rbox))
 	end).
 
 %% =============================================================================

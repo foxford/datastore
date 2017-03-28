@@ -228,9 +228,9 @@ routes() ->
 		[	{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts} ],
 	ACL =
 		[	{"/api[/v1]/buckets/:bucket/acl", datastore_httph_acls, Opts},
-			{"/api[/v1]/buckets/:bucket/acl/:group", datastore_httph_acl, Opts},
+			{"/api[/v1]/buckets/:bucket/acl/:aclgname", datastore_httph_acl, Opts},
 			{"/api[/v1]/buckets/:bucket/objects/:key/acl", datastore_httph_acls, Opts},
-			{"/api[/v1]/buckets/:bucket/objects/:key/acl/:group", datastore_httph_acl, Opts} ],
+			{"/api[/v1]/buckets/:bucket/objects/:key/acl/:aclgname", datastore_httph_acl, Opts} ],
 
 	%Pages =
 	%	[{"/api[/v1]/pages/:bucket/[...]", datastore_httph_pages, #{}}],

@@ -34,10 +34,10 @@
 
 -spec list(binary(), binary(), map()) -> [map()].
 list(Bucket, Key, Rdesc) ->
-	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
-	Pid = gunc_pool:lock(Pool),
-	MaybeE = riakacl_entry:find(Pid, Ob, object_key(Bucket, Key)),
-	gunc_pool:unlock(Pool, Pid),
+	#{object_aclobject := #{pool := KVpool, bucket := AclOb}} = Rdesc,
+	KVpid = riakc_pool:lock(KVpool),
+	MaybeE = riakacl_entry:find(KVpid, AclOb, object_key(Bucket, Key)),
+	riakc_pool:unlock(KVpool, KVpid),
 	case MaybeE of
 		{ok, E} -> format_resources(E);
 		_       -> []
@@ -47,51 +47,51 @@ list(Bucket, Key, Rdesc) ->
 %% a list of ACL groups by one request.
 -spec update_list(binary(), binary(), [{binary(), riakacl_group:group()}], map()) -> [map()].
 update_list(Bucket, Key, Groups, Rdesc) ->
-	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
-	Pid = gunc_pool:lock(Pool),
-	E = riakacl_entry:put_groups(Pid, Ob, object_key(Bucket, Key), Groups, [return_body]),
-	gunc_pool:unlock(Pool, Pid),
+	#{object_aclobject := #{pool := KVpool, bucket := AclOb}} = Rdesc,
+	KVpid = riakc_pool:lock(KVpool),
+	E = riakacl_entry:put_groups(KVpid, AclOb, object_key(Bucket, Key), Groups, [return_body]),
+	riakc_pool:unlock(KVpool, KVpid),
 	format_resources(E).
 
 -spec read(binary(), binary(), binary(), map()) -> {ok, rbox()} | error.
-read(Bucket, Key, Gname, Rdesc) ->
-	read(Bucket, Key, Gname, Rdesc, []).
+read(Bucket, Key, AclGname, Rdesc) ->
+	read(Bucket, Key, AclGname, Rdesc, []).
 
 -spec read(binary(), binary(), binary(), map(), [proplists:property()]) -> {ok, rbox()} | error.
-read(Bucket, Key, Gname, Rdesc, Opts) ->
-	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
-	Pid = gunc_pool:lock(Pool),
-	MaybeE = riakacl_entry:find(Pid, Ob, object_key(Bucket, Key), Opts),
-	gunc_pool:unlock(Pool, Pid),
+read(Bucket, Key, AclGname, Rdesc, Opts) ->
+	#{object_aclobject := #{pool := KVpool, bucket := AclOb}} = Rdesc,
+	KVpid = riakc_pool:lock(KVpool),
+	MaybeE = riakacl_entry:find(KVpid, AclOb, object_key(Bucket, Key), Opts),
+	riakc_pool:unlock(KVpool, KVpid),
 	case MaybeE of
-		{ok, E} -> find_group(Gname, E);
+		{ok, E} -> find_resource(AclGname, E);
 		_       -> error
 	end.
 
 -spec update(binary(), binary(), binary(), riakacl_group:group(), rbox(), map()) -> map().
-update(Bucket, Key, Gname, Gdata, Rbox, Rdesc) ->
-	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
+update(Bucket, Key, AclGname, Gdata, Rbox, Rdesc) ->
+	#{object_aclobject := #{pool := KVpool, bucket := AclOb}} = Rdesc,
 	E0 = case Rbox of undefined -> riakacl_entry:new_dt(); _ -> Rbox#rbox.p end,
-	Pid = gunc_pool:lock(Pool),
-	E1 = riakacl_entry:put_groups(Pid, Ob, object_key(Bucket, Key), [{Gname, Gdata}], E0, [return_body]),
-	gunc_pool:unlock(Pool, Pid),
-	format_resource(Gname, E1).
+	KVpid = riakc_pool:lock(KVpool),
+	E1 = riakacl_entry:put_groups(KVpid, AclOb, object_key(Bucket, Key), [{AclGname, Gdata}], E0, [return_body]),
+	riakc_pool:unlock(KVpool, KVpid),
+	format_resource(AclGname, E1).
 
 -spec delete(binary(), binary(), binary(), rbox(), map()) -> map().
-delete(Bucket, Key, Gname, #rbox{p = E} =Rbox, Rdesc) ->
-	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
-	Pid = gunc_pool:lock(Pool),
-	_ = riakacl_entry:remove_groups(Pid, Ob, object_key(Bucket, Key), [Gname], E, []),
-	gunc_pool:unlock(Pool, Pid),
-	to_map(Gname, Rbox).
+delete(Bucket, Key, AclGname, #rbox{p = E} =Rbox, Rdesc) ->
+	#{object_aclobject := #{pool := KVpool, bucket := AclOb}} = Rdesc,
+	KVpid = riakc_pool:lock(KVpool),
+	_ = riakacl_entry:remove_groups(KVpid, AclOb, object_key(Bucket, Key), [AclGname], E, []),
+	riakc_pool:unlock(KVpool, KVpid),
+	to_map(AclGname, Rbox).
 
 %% =============================================================================
 %% API
 %% =============================================================================
 
 -spec to_map(binary(), rbox()) -> map().
-to_map(Gname, #rbox{r = Raw}) ->
-	format_resource_dt(Gname, Raw).
+to_map(AclGname, #rbox{r = Raw}) ->
+	format_resource_dt(AclGname, Raw).
 
 -spec parse_resources([[{binary(), any()}]]) -> [{binary(), riakacl_group:group()}].
 parse_resources(L) ->
@@ -137,8 +137,8 @@ format_resource_dt(Name, Raw) ->
 			end),
 	#{id => Name, data => Data}.
 
--spec find_group(binary(), riakacl_entry:entry()) -> {ok, rbox()} | error.
-find_group(Name, E) ->
+-spec find_resource(binary(), riakacl_entry:entry()) -> {ok, rbox()} | error.
+find_resource(Name, E) ->
 	case riakacl_entry:find_group_rawdt(Name, E) of
 		{ok, Raw} -> {ok, #rbox{r = Raw, p = E}};
 		error     -> error
