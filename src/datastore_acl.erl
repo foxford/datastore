@@ -71,11 +71,7 @@ read(Bucket, Key, Gname, Rdesc, Opts) ->
 -spec update(binary(), binary(), binary(), riakacl_group:group(), rbox(), map()) -> map().
 update(Bucket, Key, Gname, Gdata, Rbox, Rdesc) ->
 	#{object_aclobject := #{pool := Pool, bucket := Ob}} = Rdesc,
-	E0 =
-		case Rbox of
-			undefined -> riakacl_entry:new_dt(riakacl:unix_time_us());
-			_         -> Rbox#rbox.p
-		end,
+	E0 = case Rbox of undefined -> riakacl_entry:new_dt(); _ -> Rbox#rbox.p end,
 	Pid = gunc_pool:lock(Pool),
 	E1 = riakacl_entry:put_groups(Pid, Ob, object_key(Bucket, Key), [{Gname, Gdata}], E0, [return_body]),
 	gunc_pool:unlock(Pool, Pid),
