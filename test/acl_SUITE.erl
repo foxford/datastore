@@ -64,10 +64,10 @@ init_per_testcase(_Test, Config) ->
 	gunc_pool:unlock(S2pool, S2pid),
 
 	%% Setting up ACL groups
-	KVpid = gunc_pool:lock(KVpool),
+	KVpid = riakc_pool:lock(KVpool),
 	riakacl:put_object_acl(KVpid, AclObjBucket, Bucket, [{<<"bucket.reader">>, Raccess}, {<<"bucket.writer">>, Waccess}]),
 	riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), [{<<"object.reader">>, Raccess}, {<<"object.writer">>, Waccess}]),
-	gunc_pool:unlock(KVpool, KVpid),
+	riakc_pool:unlock(KVpool, KVpid),
 
 	[{bucket, Bucket}, {bucket_nogroups, BucketNoGroups}, {object, Key}, {object_nogroups, KeyNoGroups} | Config].
 
@@ -112,7 +112,7 @@ list(Config) ->
 		[#{<<"id">> := _, <<"data">> := _} =Obj || Obj <- L]
 	end || Path <- Test].
 
-%% Access is graned only for accounts w/ write permissions to the bucket,
+%% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 list_permissions(Config) ->
 	Bucket = ?config(bucket, Config),
@@ -126,7 +126,7 @@ list_permissions(Config) ->
 	Pid = datastore_cth:gun_open(Config),
 	[begin
 		St = Status(A),
-		Ref = gun:request(Pid, <<"GET">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Test, A <- datastore_cth:accounts()].
 
@@ -170,7 +170,7 @@ update_list(Config) ->
 				end, L)
 	end || Path <- Test].
 
-%% Access is graned only for accounts w/ write permissions to the bucket,
+%% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 update_list_permissions(Config) ->
 	Bucket = ?config(bucket, Config),
@@ -186,7 +186,7 @@ update_list_permissions(Config) ->
 	Pid = datastore_cth:gun_open(Config),
 	[begin
 		St = Status(A),
-		Ref = gun:request(Pid, <<"POST">>, Path, [datastore_cth:authorization_header(A, Config), ContentTypeH], Payload),
+		Ref = gun:request(Pid, <<"POST">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Test, A <- datastore_cth:accounts()].
 
@@ -227,7 +227,7 @@ read(Config) ->
 		end
 	end || {Path, StatusCode} <- Test].
 
-%% Access is graned only for accounts w/ write permissions to the bucket,
+%% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 read_permissions(Config) ->
 	Bucket = ?config(bucket, Config),
@@ -243,7 +243,7 @@ read_permissions(Config) ->
 	Pid = datastore_cth:gun_open(Config),
 	[begin
 		St = Status(A),
-		Ref = gun:request(Pid, <<"GET">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Test, A <- datastore_cth:accounts()].
 
@@ -287,7 +287,7 @@ update(Config) ->
 		end
 	end || {Path, StatusCode} <- Test].
 
-%% Access is graned only for accounts w/ write permissions to the bucket,
+%% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 update_permissions(Config) ->
 	Bucket = ?config(bucket, Config),
@@ -305,7 +305,7 @@ update_permissions(Config) ->
 	Pid = datastore_cth:gun_open(Config),
 	[begin
 		St = Status(A),
-		Ref = gun:request(Pid, <<"PUT">>, Path, [datastore_cth:authorization_header(A, Config), ContentTypeH], Payload),
+		Ref = gun:request(Pid, <<"PUT">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Test, A <- datastore_cth:accounts()].
 
@@ -348,7 +348,7 @@ delete(Config) ->
 		end
 	end || {Path, StatusCode} <- Test].
 
-%% Access is graned only for accounts w/ write permissions to the bucket,
+%% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 delete_permissions_bucker_writer(Config) -> do_delete_permissions(200, [bucket_writer], Config).
 delete_permissions_admin(Config)         -> do_delete_permissions(200, [admin], Config).
@@ -365,6 +365,6 @@ do_delete_permissions(Status, Accounts, Config) ->
 
 	Pid = datastore_cth:gun_open(Config),
 	[begin
-		Ref = gun:request(Pid, <<"DELETE">>, Path, [datastore_cth:authorization_header(A, Config)]),
+		Ref = gun:request(Pid, <<"DELETE">>, Path, datastore_cth:authorization_headers(A, Config)),
 		{Status, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Test, A <- Accounts].

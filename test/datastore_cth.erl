@@ -35,6 +35,7 @@
 	gun_down/1,
 	riaks2c_open/1,
 	authorization_header/2,
+	authorization_headers/2,
 	accounts/0,
 	make_bucket/0,
 	make_key/0
@@ -82,6 +83,10 @@ riaks2c_open(Config) ->
 	{ok, Pid} = gun:open(Host, Port, #{retry => 0, protocols => [http]}),
 	Pid.
 
+-spec authorization_headers(atom(), list()) -> [{binary(), iodata()}].
+authorization_headers(anonymous, Config) -> [];
+authorization_headers(Account, Config)   -> [authorization_header(Account, Config)].
+
 -spec authorization_header(atom(), list()) -> {binary(), iodata()}.
 authorization_header(Account, Config) ->
 	{_, #{access_token := Token}} = lists:keyfind(Account, 1, Config),
@@ -89,7 +94,7 @@ authorization_header(Account, Config) ->
 
 -spec accounts() -> [atom()].
 accounts() ->
-	[bucket_reader, bucket_writer, object_reader, object_reader, anonymous, admin].
+	[bucket_reader, bucket_writer, object_reader, object_reader, admin, anonymous].
 
 %% A bucket name must obey the following rules, which produces a DNS-compliant bucket name:
 %% - Must be from 3 to 63 characters.
@@ -118,32 +123,31 @@ make_key() ->
 
 -spec init_accounts(list()) -> list().
 init_accounts(Config) ->
-	#{account_aclsubject := #{pool := KVpool, bucket := AclSubBucket}} = datastore:resources(),
+	#{account_aclsubject := #{pool := KVpool, bucket := AclSb}} = datastore:resources(),
 	{ok, Pem} = file:read_file(datastore:conf_path(<<"keys/idp-example.priv.pem">>)),
 	{Alg, Priv} = jose_pem:parse_key(Pem),
 	CreateAccount =
-		fun(Pid, AccountId, Groups) ->
+		fun(Pid, Akey, Groups) ->
 			Token =
 				jose_jws_compact:encode(
 					#{iss => <<"idp.example.org">>,
 						aud => <<"app.example.org">>,
 						exp => 32503680000,
-						sub => AccountId},
+						sub => Akey},
 					Alg,
 					Priv),
-			riakacl:put_subject_groups(Pid, AclSubBucket, AccountId, Groups),
-			#{id => AccountId, access_token => Token}
+			riakacl:put_subject_groups(Pid, AclSb, Akey, Groups),
+			#{id => Akey, access_token => Token}
 		end,
 
-	KVpid = gunc_pool:lock(KVpool),
+	KVpid = riakc_pool:lock(KVpool),
 	AccountsConf =
 		[	{bucket_reader, CreateAccount(KVpid, <<"bucket.reader">>, [{<<"bucket.reader">>, riakacl_group:new_dt()}])},
 			{bucket_writer, CreateAccount(KVpid, <<"bucker.writer">>, [{<<"bucket.writer">>, riakacl_group:new_dt()}])},
 			{object_reader, CreateAccount(KVpid, <<"object.reader">>, [{<<"object.reader">>, riakacl_group:new_dt()}])},
 			{object_writer, CreateAccount(KVpid, <<"object.writer">>, [{<<"object.writer">>, riakacl_group:new_dt()}])},
-			{anonymous, CreateAccount(KVpid, <<"anonymous">>, [{<<"anonymous">>, riakacl_group:new_dt()}])},
 			{admin, CreateAccount(KVpid, <<"admin">>, [{<<"admin">>, riakacl_group:new_dt()}])} | Config ],
-	gunc_pool:unlock(KVpool, KVpid),
+	riakc_pool:unlock(KVpool, KVpid),
 	AccountsConf.
 
 -spec oneof(list()) -> integer().
