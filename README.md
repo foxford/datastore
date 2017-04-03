@@ -2,8 +2,9 @@
 
 [![Build Status][travis-img]][travis]
 
-Highly available, scalable and simple to use object storage on top of Riak S2
-
+Highly available, scalable and simple to use object storage
+with token based (OAuth2 Bearer Token) authorization.
+It stores data and large binary objects in Riak S2 and ACL entries in Riak KV.
 
 
 ### How To Use
