@@ -84,8 +84,8 @@ riaks2c_open(Config) ->
 	Pid.
 
 -spec authorization_headers(atom(), list()) -> [{binary(), iodata()}].
-authorization_headers(anonymous, Config) -> [];
-authorization_headers(Account, Config)   -> [authorization_header(Account, Config)].
+authorization_headers(anonymous, _Config) -> [];
+authorization_headers(Account, Config)    -> [authorization_header(Account, Config)].
 
 -spec authorization_header(atom(), list()) -> {binary(), iodata()}.
 authorization_header(Account, Config) ->

@@ -118,17 +118,19 @@ list_permissions(Config) ->
 	Bucket = ?config(bucket, Config),
 	Key = ?config(object, Config),
 	Allowed = [bucket_writer, admin],
-	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
-	Test =
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Paths =
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
+	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
 	Pid = datastore_cth:gun_open(Config),
 	[begin
-		St = Status(A),
-		Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || Path <- Test, A <- datastore_cth:accounts()].
+		[begin
+			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As, Path <- Ps]
+	end || {St, As, Ps} <- Test].
 
 %% Adds or updates a list of ACL groups.
 %% Returns the modified list of ACL groups.
@@ -178,17 +180,19 @@ update_list_permissions(Config) ->
 	ContentTypeH = {<<"content-type">>, <<"application/json">>},
 	Payload = jsx:encode([#{id => <<"test-group">>, data => #{access => <<"--">>, <<"exp">> => 32503680000}}]),
 	Allowed = [bucket_writer, admin],
-	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
-	Test =
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Paths =
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl">>],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
+	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
 	Pid = datastore_cth:gun_open(Config),
 	[begin
-		St = Status(A),
-		Ref = gun:request(Pid, <<"POST">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || Path <- Test, A <- datastore_cth:accounts()].
+		[begin
+			Ref = gun:request(Pid, <<"POST">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As, Path <- Ps]
+	end || {St, As, Ps} <- Test].
 
 %% Returns the specified ACL group.
 %% The 404 'Not Found' error is returned for buckets or objects that haven't exist yet
@@ -235,17 +239,19 @@ read_permissions(Config) ->
 	GroupBucket = <<"bucket.reader">>,
 	GroupObject = <<"object.reader">>,
 	Allowed = [bucket_writer, admin],
-	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
-	Test =
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Paths =
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
+	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
 	Pid = datastore_cth:gun_open(Config),
 	[begin
-		St = Status(A),
-		Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || Path <- Test, A <- datastore_cth:accounts()].
+		[begin
+			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As, Path <- Ps]
+	end || {St, As, Ps} <- Test].
 
 %% Adds or updates the specified ACL group.
 %% Returns the modified ACL group.
@@ -297,17 +303,19 @@ update_permissions(Config) ->
 	GroupObject = <<"object.reader">>,
 	Payload = jsx:encode(#{access => <<"--">>, <<"exp">> => 32503680000}),
 	Allowed = [bucket_writer, admin],
-	Status = fun(A) -> case lists:member(A, Allowed) of true -> 200; _ -> 403 end end, 
-	Test =
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Paths =
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
+	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
 	Pid = datastore_cth:gun_open(Config),
 	[begin
-		St = Status(A),
-		Ref = gun:request(Pid, <<"PUT">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || Path <- Test, A <- datastore_cth:accounts()].
+		[begin
+			Ref = gun:request(Pid, <<"PUT">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As, Path <- Ps]
+	end || {St, As, Ps} <- Test].
 
 %% Removes the specified ACL group.
 %% Returns the removed ACL group.
@@ -359,7 +367,7 @@ do_delete_permissions(Status, Accounts, Config) ->
 	Key = ?config(object, Config),
 	GroupBucket = <<"bucket.reader">>,
 	GroupObject = <<"object.reader">>,
-	Test =
+	Paths =
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
 
@@ -367,4 +375,4 @@ do_delete_permissions(Status, Accounts, Config) ->
 	[begin
 		Ref = gun:request(Pid, <<"DELETE">>, Path, datastore_cth:authorization_headers(A, Config)),
 		{Status, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || Path <- Test, A <- Accounts].
+	end || Path <- Paths, A <- Accounts].
