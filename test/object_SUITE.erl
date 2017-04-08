@@ -42,15 +42,29 @@ init_per_suite(Config) ->
 	datastore_cth:init_config() ++ Config.
 
 init_per_testcase(_Test, Config) ->
-	#{object := #{pool := S2pool, options := S2opts}} = datastore:resources(),
+	#{object := #{pool := S2pool, options := S2opts},
+		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = datastore:resources(),
 	Bucket = iolist_to_binary(datastore_cth:make_bucket()),
+	Key = iolist_to_binary(datastore_cth:make_key()),
+	Raccess = riakacl_rwaccess:new_dt(#{read => true}),
+	Waccess = riakacl_rwaccess:new_dt(#{write => true}),
 
-	%% Creating bucket
+	%% Creating bucket and object
 	S2pid = gunc_pool:lock(S2pool),
 	riaks2c_bucket:await_put(S2pid, riaks2c_bucket:put(S2pid, Bucket, S2opts)),
+	riaks2c_object:await_put(S2pid, riaks2c_object:put(S2pid, Bucket, Key, <<42>>, S2opts)),
 	gunc_pool:unlock(S2pool, S2pid),
 
-	[{bucket, Bucket} | Config].
+	%% Setting up ACL groups
+	KVpid = riakc_pool:lock(KVpool),
+	riakacl:put_object_acl(KVpid, AclObjBucket, Bucket, [{<<"bucket.reader">>, Raccess}, {<<"bucket.writer">>, Waccess}]),
+	riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), [{<<"object.reader">>, Raccess}, {<<"object.writer">>, Waccess}]),
+	riakc_pool:unlock(KVpool, KVpid),
+
+	[{bucket, Bucket}, {key, Key} | Config].
+
+end_per_testcase(_Test, Config) ->
+	Config.
 
 end_per_suite(Config) ->
 	Config.
@@ -65,24 +79,37 @@ end_per_suite(Config) ->
 read(Config) ->
 	Bucket = ?config(bucket, Config),
 	BucketNotExist = datastore_cth:make_bucket(),
-	Key = iolist_to_binary(datastore_cth:make_key()),
+	Key = ?config(key, Config),
 	AuthorizationH = datastore_cth:authorization_header(admin, Config),
 	Test =
 		[	%% bucket exist
 			{200, Bucket, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
 			%% bucket doesn't exist
 			{404, BucketNotExist, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
-
-	#{object := #{pool := S2pool, options := S2opts}} = datastore:resources(),
-	S2pid = gunc_pool:lock(S2pool),
-	riaks2c_object:await_put(S2pid, riaks2c_object:put(S2pid, Bucket, Key, <<42>>, S2opts)),
-	gunc_pool:unlock(S2pool, S2pid),
 	
 	Pid = datastore_cth:gun_open(Config),
 	[begin	
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || {St, Path} <- Test].
+
+%% Access is granted only for accounts w/ read permissions to the object,
+%% and members of 'admin' (predefined) group.
+read_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(key, Config),
+	Allowed = [object_reader, admin],
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+	Test = [{200, Allowed}, {403, Forbidden}],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		[begin
+			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As]
+	end || {St, As} <- Test].
 
 %% Adds or updates the specified object.
 %% Returns 204 'No Content' status code on success and
@@ -124,29 +151,61 @@ update(Config) ->
 		gunc_pool:unlock(S2pool, S2pid)
 	end || {St, B, Path} <- Test].
 
+%% Access is granted only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+update_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(key, Config),
+	Allowed = [bucket_writer, admin],
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+	Test = [{204, Allowed}, {403, Forbidden}],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		[begin
+			Ref = gun:request(Pid, <<"PUT">>, Path, datastore_cth:authorization_headers(A, Config), <<42>>),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As]
+	end || {St, As} <- Test].
+
 %% Removes the specified object.
 %% Returns 204 'No Content' status code on success and
 %% 404 'Not Found' status code when the bucket doesn't exist.
 delete(Config) ->
 	Bucket = ?config(bucket, Config),
 	BucketNotExist = datastore_cth:make_bucket(),
-	Key = iolist_to_binary(datastore_cth:make_key()),
+	Key = ?config(key, Config),
+	KeyNotExist = datastore_cth:make_key(),
 	AuthorizationH = datastore_cth:authorization_header(admin, Config),
 	Test =
-		[	%% bucket exist
+		[	%% object exist
 			{204, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
+			%% object doesn't exist
+			{204, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, KeyNotExist]},
 			%% bucket doesn't exist
 			{404, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
-
-	%% Creating an object
-	#{object := #{pool := S2pool, options := S2opts}} = datastore:resources(),
-	S2pid = gunc_pool:lock(S2pool),
-	riaks2c_object:put(S2pid, Bucket, Key, <<42>>, S2opts),
-	gunc_pool:unlock(S2pool, S2pid),
 	
 	Pid = datastore_cth:gun_open(Config),
 	[begin	
 		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
-		gunc_pool:unlock(S2pool, S2pid)
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || {St, Path} <- Test].
+
+%% Access is granted only for accounts w/ write permissions to the bucket,
+%% and members of 'admin' (predefined) group.
+delete_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(key, Config),
+	Allowed = [bucket_writer, admin],
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+	Test = [{204, Allowed}, {403, Forbidden}],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		[begin
+			Ref = gun:request(Pid, <<"DELETE">>, Path, datastore_cth:authorization_headers(A, Config)),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As]
+	end || {St, As} <- Test].

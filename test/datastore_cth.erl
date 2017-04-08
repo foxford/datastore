@@ -94,7 +94,7 @@ authorization_header(Account, Config) ->
 
 -spec accounts() -> [atom()].
 accounts() ->
-	[bucket_reader, bucket_writer, object_reader, object_reader, admin, anonymous].
+	[bucket_reader, bucket_writer, object_reader, object_writer, admin, anonymous].
 
 %% A bucket name must obey the following rules, which produces a DNS-compliant bucket name:
 %% - Must be from 3 to 63 characters.

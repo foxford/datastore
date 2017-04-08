@@ -113,7 +113,7 @@ handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_auth
 handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
 
 handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
-	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Rdesc) of
+	try datastore:authorize(datastore_acl:object_key(Bucket, Key), AuthM, Rdesc) of
 		{ok, #{read := true}} -> handle_read(Req, State);
 		_                     -> {ok, cowboy_req:reply(403, Req), State}
 	catch
