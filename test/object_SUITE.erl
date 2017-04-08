@@ -111,6 +111,44 @@ read_permissions(Config) ->
 		end || A <- As]
 	end || {St, As} <- Test].
 
+%% Returns headers of the specified object.
+%% Returns 204 'No Content' status code on success and
+%% 404 'Not Found' status code when the bucket doesn't exist.
+head(Config) ->
+	Bucket = ?config(bucket, Config),
+	BucketNotExist = datastore_cth:make_bucket(),
+	Key = ?config(key, Config),
+	AuthorizationH = datastore_cth:authorization_header(admin, Config),
+	Test =
+		[	%% bucket exist
+			{204, Bucket, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
+			%% bucket doesn't exist
+			{404, BucketNotExist, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
+	
+	Pid = datastore_cth:gun_open(Config),
+	[begin	
+		Ref = gun:request(Pid, <<"HEAD">>, Path, [AuthorizationH]),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+	end || {St, Path} <- Test].
+
+%% Access is granted only for accounts w/ read permissions to the object,
+%% and members of 'admin' (predefined) group.
+head_permissions(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(key, Config),
+	Allowed = [object_reader, admin],
+	Forbidden = datastore_cth:accounts() -- Allowed,
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+	Test = [{204, Allowed}, {403, Forbidden}],
+
+	Pid = datastore_cth:gun_open(Config),
+	[begin
+		[begin
+			Ref = gun:request(Pid, <<"HEAD">>, Path, datastore_cth:authorization_headers(A, Config)),
+			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
+		end || A <- As]
+	end || {St, As} <- Test].
+
 %% Adds or updates the specified object.
 %% Returns 204 'No Content' status code on success and
 %% 404 'Not Found' status code when the bucket doesn't exist.
