@@ -28,12 +28,12 @@
 -export([
 	handle_read/5,
 	handle_read_stream/4,
-	handle_read_body/4
+	handle_read_body/4,
+	cleanup_headers/1
 ]).
 
 %% API
 -export([
-	cleanup_headers/1,
 	cleanup_content_headers/1,
 	media_type/1
 ]).
@@ -65,6 +65,11 @@
 		Data          :: iodata(),
 		State         :: any(),
 		Result        :: {Status, CowboyHeaders, Data | keep_body}.
+
+-callback cleanup_headers(GunHeaders) -> CowboyHeaders
+	when
+		GunHeaders    :: riaks2c_http:headers(),
+		CowboyHeaders :: cowboy_stream:headers().
 
 %% =============================================================================
 %% Media type handler callbacks
@@ -111,13 +116,16 @@ handle_read_body(Status, Headers, Body, {Mod, State}) ->
 handle_read_body(Status, Headers, _Body, _State) ->
 	{Status, cleanup_headers(Headers), keep_body}.
 
+-spec cleanup_headers(GunHeaders) -> CowboyHeaders
+	when
+		GunHeaders    :: riaks2c_http:headers(),
+		CowboyHeaders :: cowboy_stream:headers().
+cleanup_headers(Headers) ->
+	cleanup_headers(Headers, #{}).
+
 %% =============================================================================
 %% API
 %% =============================================================================
-
--spec cleanup_headers(riaks2c_http:headers()) -> cowboy_stream:headers().
-cleanup_headers(Headers) ->
-	cleanup_headers(Headers, #{}).
 
 -spec cleanup_headers(riaks2c_http:headers(), cowboy_stream:headers()) -> cowboy_stream:headers().
 cleanup_headers([{<<"x-", _/bits>>, _}|T], Acc)    -> cleanup_headers(T, Acc);

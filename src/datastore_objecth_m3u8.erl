@@ -30,7 +30,7 @@
 	handle_read/5,
 	handle_read_stream/4,
 	handle_read_body/4,
-	append_access_token/3
+	cleanup_headers/1
 ]).
 
 %% Definitions
@@ -69,7 +69,7 @@ handle_read(_Bucket, _Key, #{access_token := Token}, 200 =Status, Headers) ->
 	Hs1 = Hs0#{<<"content-type">> => ?CONTENT_TYPE},
 	{stream, Status, Hs1, {?MODULE, #state{t = Token}}};
 handle_read(_Bucket, _Key, _Params, Status, Headers) ->
-	{stream, Status, datastore_objecth:cleanup_headers(Headers), ignore}.
+	{stream, Status, cleanup_headers(Headers), ignore}.
 
 -spec handle_read_stream(Data, Fin, Stream, State) -> State
 	when
@@ -91,7 +91,14 @@ handle_read_stream(Data0, IsFin, Stream, #state{t = Token, ps = Pstate0} =State)
 		State         :: any(),
 		Result        :: {Status, CowboyHeaders, Data | keep_body}.
 handle_read_body(Status, Headers, _Body, _State) ->
-	{Status, datastore_objecth:cleanup_headers(Headers), keep_body}.
+	{Status, cleanup_headers(Headers), keep_body}.
+
+-spec cleanup_headers(GunHeaders) -> CowboyHeaders
+	when
+		GunHeaders    :: riaks2c_http:headers(),
+		CowboyHeaders :: cowboy_stream:headers().
+cleanup_headers(Headers) ->
+	datastore_objecth:cleanup_headers(Headers).
 
 %% =============================================================================
 %% Internal functions
