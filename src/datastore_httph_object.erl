@@ -67,8 +67,9 @@ init(Req, Opts) ->
 
 handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
+handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET PUT">>, Req0),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET PUT DELETE">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Content-Type, Range">>, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
@@ -107,8 +108,9 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		{ok, cowboy_req:reply(401, Req), State}
 	end.
 
-handle_authorization(#{method := <<"GET">>} =Req, State) -> handle_read_authorization(Req, State);
-handle_authorization(#{method := <<"PUT">>} =Req, State) -> handle_write_authorization(Req, State).
+handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State);
+handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State);
+handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
 
 handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 	try datastore:authorize(<<Bucket/binary, $:, Key/binary>>, AuthM, Rdesc) of
@@ -144,31 +146,49 @@ handle_read(Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Buc
 	gunc_pool:unlock(S2pool, Pid),
 	{ok, Req1, State}.
 
-handle_write(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State);
+handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
+
+handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
+	S2pid = gunc_pool:lock(S2pool),
+	MaybeOk = riaks2c_object:await_remove(S2pid, riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts)),
+	gunc_pool:unlock(S2pool, S2pid),
+
+	Req1 =
+		case MaybeOk of
+			ok                                -> cowboy_req:reply(204, Req0);
+			{error, {bad_bucket, _Bucket}}    -> cowboy_req:reply(404, Req0);
+			{error, {bad_key, _Bucket, _Key}} -> cowboy_req:reply(404, Req0);
+			_                                 -> cowboy_req:reply(422, Req0)
+		end,
+	{ok, Req1, State}.
+
+handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
 	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
 	S2pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
-	Req1 = read_body(S2pid, Ref, Req0),
+	Req1 = upstream_body(S2pid, Ref, Req0),
 	MaybeOk = riaks2c_object:await_put(S2pid, Ref),
 	gunc_pool:unlock(S2pool, S2pid),
 
 	Req2 =
 		case MaybeOk of
-			ok                             -> cowboy_req:reply(200, Req1);
+			ok                             -> cowboy_req:reply(204, Req1);
 			{error, {bad_bucket, _Bucket}} -> cowboy_req:reply(404, Req1);
 			_                              -> cowboy_req:reply(422, Req1)
 		end,
 	{ok, Req2, State}.
 
--spec read_body(pid(), reference(), Req) -> Req when Req :: cowboy_req:req().
-read_body(Pid, Ref, Req0) ->
+-spec upstream_body(pid(), reference(), Req) -> Req when Req :: cowboy_req:req().
+upstream_body(Pid, Ref, Req0) ->
 	case cowboy_req:read_body(Req0) of
 		{ok, Data, Req1} ->
 			gun:data(Pid, Ref, fin, Data),
 			Req1;
 		{more, Data, Req1} ->
 			gun:data(Pid, Ref, nofin, Data),
-			read_body(Pid, Ref, Req1)
+			upstream_body(Pid, Ref, Req1)
 	end.
 
 -spec handle_read_stream(module(), binary(), binary(), map(), pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
@@ -205,11 +225,14 @@ allow_headers(<<"GET">>) ->
 allow_headers(<<"PUT">>) ->
 	[ {<<"content-type">>, fun cow_http_hd:parse_content_type/1},
 		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
-		{<<"content-md5">>, fun(_) -> ok end}	].
+		{<<"content-md5">>, fun(_) -> ok end}	];
+allow_headers(<<"DELETE">>) ->
+	[].
 
 -spec parse_params(binary(), [{binary(), binary() | true}]) -> map().
-parse_params(<<"GET">>, Qs) -> parse_read_params(Qs, #{});
-parse_params(<<"PUT">>, _)  -> #{}.
+parse_params(<<"GET">>, Qs)   -> parse_read_params(Qs, #{});
+parse_params(<<"PUT">>, _)    -> #{};
+parse_params(<<"DELETE">>, _) -> #{}.
 
 -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
 parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});

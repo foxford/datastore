@@ -85,7 +85,7 @@ read(Config) ->
 	end || {St, Path} <- Test].
 
 %% Adds or updates the specified object.
-%% Returns 200 'Ok' status code on success and
+%% Returns 204 'No Content' status code on success and
 %% 404 'Not Found' status code when the bucket doesn't exist.
 update(Config) ->
 	Bucket = ?config(bucket, Config),
@@ -100,7 +100,7 @@ update(Config) ->
 	ContentTypeH = {<<"content-type">>, ContentType},
 	Test =
 		[	%% bucket exist
-			{200, Bucket, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
+			{204, Bucket, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
 			%% bucket doesn't exist
 			{404, BucketNotExist, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
 	
@@ -113,7 +113,7 @@ update(Config) ->
 		#{object := #{pool := S2pool, options := S2opts}} = datastore:resources(),
 		S2pid = gunc_pool:lock(S2pool),
 		case St of
-			200 ->
+			204 ->
 				S2ref = riaks2c_object:get(S2pid, B, Key, S2opts),
 				{200, Hs} = riaks2c_object:expect_head(S2pid, S2ref),
 				{_, ContentType} = lists:keyfind(<<"content-type">>, 1, Hs),
@@ -123,3 +123,30 @@ update(Config) ->
 		end,
 		gunc_pool:unlock(S2pool, S2pid)
 	end || {St, B, Path} <- Test].
+
+%% Removes the specified object.
+%% Returns 204 'No Content' status code on success and
+%% 404 'Not Found' status code when the bucket doesn't exist.
+delete(Config) ->
+	Bucket = ?config(bucket, Config),
+	BucketNotExist = datastore_cth:make_bucket(),
+	Key = iolist_to_binary(datastore_cth:make_key()),
+	AuthorizationH = datastore_cth:authorization_header(admin, Config),
+	Test =
+		[	%% bucket exist
+			{204, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
+			%% bucket doesn't exist
+			{404, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
+
+	%% Creating an object
+	#{object := #{pool := S2pool, options := S2opts}} = datastore:resources(),
+	S2pid = gunc_pool:lock(S2pool),
+	riaks2c_object:put(S2pid, Bucket, Key, <<42>>, S2opts),
+	gunc_pool:unlock(S2pool, S2pid),
+	
+	Pid = datastore_cth:gun_open(Config),
+	[begin	
+		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
+		gunc_pool:unlock(S2pool, S2pid)
+	end || {St, Path} <- Test].
