@@ -32,7 +32,8 @@
 	init/3,
 	data/4,
 	info/3,
-	terminate/3
+	terminate/3,
+	early_error/5
 ]).
 
 %% =============================================================================
@@ -55,4 +56,19 @@ info(StreamId, Info, State) ->
 	cowboy_stream_h:info(StreamId, Info, State).
 
 terminate(StreamId, Reason, State) ->
+	log_terminate(StreamId, Reason, State),
 	cowboy_stream_h:terminate(StreamId, Reason, State).
+
+early_error(StreamID, Reason, PartialReq, Resp, Opts) ->
+	?ERROR_REPORT(datastore_http_log:format_request(PartialReq)),
+	cowboy_stream_h:early_error(StreamID, Reason, PartialReq, Resp, Opts).
+
+%% =============================================================================
+%% Internal function
+%% =============================================================================
+
+log_terminate(_StreamId, normal, _State)        -> ignore;
+log_terminate(_StreamId, shutdown, _State)      -> ignore;
+log_terminate(_StreamId, {shutdown, _}, _State) -> ignore;
+log_terminate(StreamId, Reason, _State) ->
+	?ERROR_REPORT([{http_streamid, StreamId}, {http_exception_reason, Reason}]).
