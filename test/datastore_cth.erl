@@ -36,6 +36,7 @@
 	riaks2c_open/1,
 	authorization_header/2,
 	authorization_headers/2,
+	has_aclgroup/4,
 	accounts/0,
 	make_bucket/0,
 	make_key/0
@@ -91,6 +92,13 @@ authorization_headers(Account, Config)    -> [authorization_header(Account, Conf
 authorization_header(Account, Config) ->
 	{_, #{access_token := Token}} = lists:keyfind(Account, 1, Config),
 	{<<"authorization">>, [<<"Bearer ">>, Token]}.
+
+-spec has_aclgroup(pid(), bucket_and_type(), binary(), binary()) -> boolean().
+has_aclgroup(Pid, Bucket, Key, Name) ->
+	case riakacl_entry:find_group_rawdt(Name, riakacl_entry:get(Pid, Bucket, Key)) of
+		{ok, _Group} -> true;
+		_            -> false
+	end.
 
 -spec accounts() -> [atom()].
 accounts() ->

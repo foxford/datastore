@@ -88,7 +88,7 @@ handle_headers(#{method := Method, headers := Hs} =Req, State) ->
 	end.
 
 handle_params(#{method := Method} =Req, State) ->
-	try parse_params(Method, cowboy_req:parse_qs(Req)) of
+	try parse_params(Method, Req) of
 		Params ->
 			handle_authentication(Req, State#state{params = Params})
 	catch
@@ -170,8 +170,21 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 		end,
 	{ok, Req1, State}.
 
-handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
+handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts},
+		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+
+	%% Setting up ACL
+	case maps:get(aclgroups, Params) of
+		[_|_] =Groups ->
+			KVpid = riakc_pool:lock(KVpool),
+			_ = riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), Groups),
+			riakc_pool:unlock(KVpool, KVpid);
+		_ ->
+			ignore
+	end,
+
+	%% Uploading object
 	S2pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
 	Req1 = upstream_body(S2pid, Ref, Req0),
@@ -243,11 +256,11 @@ allow_headers(<<"PUT">>) ->
 allow_headers(<<"DELETE">>) ->
 	[].
 
--spec parse_params(binary(), [{binary(), binary() | true}]) -> map().
-parse_params(<<"HEAD">>, Qs)  -> parse_read_params(Qs, #{});
-parse_params(<<"GET">>, Qs)   -> parse_read_params(Qs, #{});
-parse_params(<<"PUT">>, _)    -> #{};
-parse_params(<<"DELETE">>, _) -> #{}.
+-spec parse_params(binary(), cowboy_req:req()) -> map().
+parse_params(<<"HEAD">>, Req)    -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"GET">>, Req)     -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"PUT">>, Req)     -> #{aclgroups => parse_aclheader(Req)};
+parse_params(<<"DELETE">>, _Req) -> #{}.
 
 -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
 parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
@@ -276,3 +289,11 @@ with_headers([{Key, Validate}|T], Headers, Acc) ->
 	end;
 with_headers([], _Headers, Acc) ->
 	Acc.
+
+-spec parse_aclheader(cowboy_req:req()) -> [{binary(), riakacl_group:group()}].
+parse_aclheader(Req) ->
+	case cowboy_req:header(<<"x-datastore-acl">>, Req) of
+		undefined -> [];
+		Val       -> datastore_acl:parse_resources(jsx:decode(Val))
+	end.
+

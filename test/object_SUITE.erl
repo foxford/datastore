@@ -189,6 +189,25 @@ update(Config) ->
 		gunc_pool:unlock(S2pool, S2pid)
 	end || {St, B, Path} <- Test].
 
+%% List of ACL groups can be passed along with creating/updating resource.
+update_with_aclgroup(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = iolist_to_binary(datastore_cth:make_key()),
+	AclGname = <<"test">>,
+	AclH = {<<"x-datastore-acl">>, jsx:encode([#{id => AclGname, data => #{access => <<"--">>}}])},
+	AuthorizationH = datastore_cth:authorization_header(admin, Config),
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+
+	Pid = datastore_cth:gun_open(Config),
+	Ref = gun:request(Pid, <<"PUT">>, Path, [AuthorizationH, AclH], <<42>>),
+	{204, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
+
+	%% Checking ACL
+	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = datastore:resources(),
+	KVpid = riakc_pool:lock(KVpool),
+	datastore_cth:has_aclgroup(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), AclGname),
+	riakc_pool:unlock(KVpool, KVpid).
+
 %% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.
 update_permissions(Config) ->
