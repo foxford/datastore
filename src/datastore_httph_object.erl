@@ -70,7 +70,7 @@ handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD GET PUT DELETE">>, Req0),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Content-Type, Range">>, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
