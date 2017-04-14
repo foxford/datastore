@@ -41,13 +41,15 @@
 
 -spec format_request(cowboy_req:req()) -> kvlist().
 format_request(Req) ->
-	#{streamid := StreamId,
+	#{pid := Pid,
+		streamid := StreamId,
 		method := Method,
 		version := Version,
 		headers := Headers,
 		peer := {Addr, Port}} = Req,
 	Acc =
-		[	{http_streamid, StreamId},
+		[	{http_pid, Pid},
+			{http_streamid, StreamId},
 			{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
 			{http_method, Method},
 			{http_version, Version},
