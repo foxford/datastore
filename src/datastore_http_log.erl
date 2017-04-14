@@ -54,7 +54,8 @@ format_request(Req) ->
 			{http_method, Method},
 			{http_version, Version},
 			{http_peer, <<(list_to_binary(inet:ntoa(Addr)))/binary, $:, (integer_to_binary(Port))/binary>>} ],
-	add_optional_map_property(http_user_agent, <<"user-agent">>, Headers, Acc).
+	add_optional_map_property(http_referer, <<"referer">>, Headers,
+		add_optional_map_property(http_user_agent, <<"user-agent">>, Headers, Acc)).
 
 -spec format_unauthenticated_request(cowboy_req:req()) -> kvlist().
 format_unauthenticated_request(#{headers := Headers} =Req) ->
