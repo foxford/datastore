@@ -28,6 +28,7 @@
 -export([
 	format_request/1,
 	format_unauthenticated_request/1,
+	format_response/2,
 	format_response/3
 ]).
 
@@ -57,11 +58,15 @@ format_request(Req) ->
 format_unauthenticated_request(#{headers := Headers} =Req) ->
 	add_optional_map_property(http_authorization_header, <<"authorization">>, Headers, format_request(Req)).
 
--spec format_response(integer(), integer(), map()) -> kvlist().
-format_response(StreamId, Status, Headers) ->
-	[	{http_streamid, StreamId},
-		{http_headers, Headers},
-		{http_status_code, Status} ].
+-spec format_response(integer(), map()) -> kvlist().
+format_response(Status, Headers) ->
+	format_response(Status, Headers, []).
+
+-spec format_response(integer(), map(), kvlist()) -> kvlist().
+format_response(Status, Headers, Acc) ->
+	[	{http_response_headers, Headers},
+		{http_status_code, Status}
+		| Acc].
 
 %% =============================================================================
 %% Internal function

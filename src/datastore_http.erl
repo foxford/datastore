@@ -59,7 +59,7 @@
 start() ->
 	HttpOpts = datastore:http_options(),
 	HttpdRequiredOpts =
-		#{stream_handlers => [datastore_streamh],
+		#{stream_handlers => [datastore_streamh_log, cowboy_stream_h],
 			middlewares => [datastore_httpm_cors, cowboy_router, cowboy_handler],
 			env => #{dispatch => dispatch(), allowed_origins => datastore:allowed_origins()}},
 	HttpdStart =
