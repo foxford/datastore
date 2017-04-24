@@ -106,8 +106,9 @@ options(Req0, State) ->
 
 from_json(Req0, #state{bucket = Bucket, key = Key, aclgname = AclGname, rdesc = Rdesc, rbox = Rbox} =State) ->
 	datastore_http:handle_payload(Req0, State, fun(Payload, Req1) ->
+		Rdata = datastore_acl:parse_resource_data(jsx:decode(Payload)),
 		datastore_http:handle_response(Req1, State, fun() ->
-			datastore_acl:update(Bucket, Key, AclGname, datastore_acl:parse_resource_data(jsx:decode(Payload)), Rbox, Rdesc)
+			datastore_acl:update(Bucket, Key, AclGname, Rdata, Rbox, Rdesc)
 		end)
 	end).
 
