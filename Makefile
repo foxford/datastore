@@ -1,6 +1,8 @@
 PROJECT = datastore
 PROJECT_DESCRIPTION = Data Store
-PROJECT_VERSION = $(shell ./version.sh)
+
+DEP_PLUGINS = \
+	version.mk
 
 DEPS = \
 	lager \
@@ -26,6 +28,9 @@ dep_riakacl = git git://github.com/manifest/riak-acl.git v0.1.2
 dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.2
 dep_cowboy = git git://github.com/ninenines/cowboy.git 304e3efbf84bcee9e2f28480da85635800949cbe
 dep_exometer = git git://github.com/Feuerlabs/exometer.git 1.2.1
+
+BUILD_DEPS = version.mk
+dep_version.mk = git git://github.com/manifest/version.mk.git master
 
 TEST_DEPS = ct_helper
 dep_ct_helper = git git://github.com/ninenines/ct_helper.git master
