@@ -1,6 +1,6 @@
 PROJECT = datastore
 PROJECT_DESCRIPTION = Data Store
-PROJECT_VERSION = 0.1.0
+PROJECT_VERSION = $(shell ./version.sh)
 
 DEPS = \
 	lager \
@@ -17,14 +17,14 @@ IGNORE_DEPS = \
 	folsom \
 	bear
 
-dep_lager = git https://github.com/erlang-lager/lager.git 3.4.1
+dep_lager = git https://github.com/erlang-lager/lager.git 3.4.2
 dep_lager_syslog = git git://github.com/basho/lager_syslog.git 3.0.3
-dep_riakc_pool = git git://github.com/manifest/riak-connection-pool.git v0.2.0
-dep_gunc_pool = git git://github.com/manifest/gun-connection-pool.git v0.1.0
-dep_riaks2c = git git://github.com/manifest/riak-s2-erlang-client.git v0.2.1
-dep_riakacl = git git://github.com/manifest/riak-acl.git v0.1.1
-dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.1
-dep_cowboy = git git://github.com/ninenines/cowboy.git 10dfd8c910bce3ae71146f8f13eef25b34ec093a
+dep_riakc_pool = git git://github.com/manifest/riak-connection-pool.git v0.2.1
+dep_gunc_pool = git git://github.com/manifest/gun-connection-pool.git v0.1.1
+dep_riaks2c = git git://github.com/manifest/riak-s2-erlang-client.git v0.3.0
+dep_riakacl = git git://github.com/manifest/riak-acl.git v0.1.2
+dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.2
+dep_cowboy = git git://github.com/ninenines/cowboy.git 304e3efbf84bcee9e2f28480da85635800949cbe
 dep_exometer = git git://github.com/Feuerlabs/exometer.git 1.2.1
 
 TEST_DEPS = ct_helper
