@@ -43,6 +43,8 @@ SHELL_OPTS = \
 
 include erlang.mk
 
+app:: rebar.config
+
 export DEVELOP_ENVIRONMENT = $(shell if [ -f .develop-environment ]; then cat .develop-environment; fi)
 export RIAKACL_DEVELOP_ENVIRONMENT = $(shell if [ -f deps/riakacl/.develop-environment ]; then cat deps/riakacl/.develop-environment; fi)
 export EXOMETER_PACKAGES='(minimal)'
