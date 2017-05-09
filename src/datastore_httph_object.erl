@@ -225,8 +225,8 @@ handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, #{method := Met
 							Stream = cowboy_req:stream_reply(Hst, Hhs, Req),
 							riaks2c_http:fold_body(
 								Pid, Ref, Timeout, Mref, Hstate,
-								fun(Data, IsFin, Acc) ->
-									Hmod:handle_read_stream(Data, IsFin, Stream, Acc)
+								fun(IsFin, Data, Acc) ->
+									Hmod:handle_read_stream(IsFin, Data, Stream, Acc)
 								end),
 							Stream
 					end;

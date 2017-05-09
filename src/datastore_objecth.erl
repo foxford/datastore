@@ -50,10 +50,10 @@
 		State         :: any(),
 		Result        :: {await_body, State} | {stream, Status, CowboyHeaders, State}.
 
--callback handle_read_stream(Data, Fin, Stream, State) -> State
+-callback handle_read_stream(IsFin, Data, Stream, State) -> State
 	when
+		IsFin  :: riaks2c_http:fin(),
 		Data   :: iodata(),
-		Fin    :: riaks2c_http:fin(),
 		Stream :: cowboy_req:req(),
 		State  :: any().
 
@@ -91,15 +91,15 @@ handle_read(Bucket, Key, Params, Status, Headers) ->
 		_                                               -> {stream, Status, cleanup_headers(Headers), ignore}
 	end.
 
--spec handle_read_stream(Data, Fin, Stream, State) -> State
+-spec handle_read_stream(IsFin, Data, Stream, State) -> State
 	when
+		IsFin  :: riaks2c_http:fin(),
 		Data   :: iodata(),
-		Fin    :: riaks2c_http:fin(),
 		Stream :: cowboy_req:req(),
 		State  :: any().
-handle_read_stream(Data, IsFin, Stream, {Mod, State}) ->
-	Mod:handle_read_stream(Data, IsFin, Stream, State);
-handle_read_stream(Data, IsFin, Stream, State) ->
+handle_read_stream(IsFin, Data, Stream, {Mod, State}) ->
+	Mod:handle_read_stream(IsFin, Data, Stream, State);
+handle_read_stream(IsFin, Data, Stream, State) ->
 	cowboy_req:stream_body(Data, IsFin, Stream),
 	State.
 

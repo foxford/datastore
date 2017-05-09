@@ -71,13 +71,13 @@ handle_read(_Bucket, _Key, #{access_token := Token}, 200 =Status, Headers) ->
 handle_read(_Bucket, _Key, _Params, Status, Headers) ->
 	{stream, Status, cleanup_headers(Headers), ignore}.
 
--spec handle_read_stream(Data, Fin, Stream, State) -> State
+-spec handle_read_stream(IsFin, Data, Stream, State) -> State
 	when
+		IsFin  :: riaks2c_http:fin(),
 		Data   :: iodata(),
-		Fin    :: riaks2c_http:fin(),
 		Stream :: cowboy_req:req(),
 		State  :: any().
-handle_read_stream(Data0, IsFin, Stream, #state{t = Token, ps = Pstate0} =State) ->
+handle_read_stream(IsFin, Data0, Stream, #state{t = Token, ps = Pstate0} =State) ->
 	{Data1, Pstate1} = append_access_token(Data0, Token, Pstate0),
 	cowboy_req:stream_body(Data1, IsFin, Stream),
 	State#state{ps = Pstate1}.
