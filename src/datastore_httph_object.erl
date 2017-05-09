@@ -70,15 +70,16 @@ handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
+	Hs = allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0)),
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
-	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Cache-Control, Content-Type, Range">>, Req1),
+	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, cow_http_hd:access_control_allow_headers(Hs), Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
 handle_request(_, Req, State) ->
 	{ok, cowboy_req:reply(405, Req), State}.
 
 handle_headers(#{method := Method, headers := Hs} =Req, State) ->
-	try with_headers(allow_headers(Method), Hs) of
+	try with_headers(allow_riaks2_headers(Method), Hs) of
 		S2headers ->
 			handle_params(Req, State#state{s2reqopts = #{headers => S2headers}})
 	catch
@@ -143,6 +144,7 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 			<<"HEAD">> -> riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts);
 			<<"GET">>  -> riaks2c_object:get(S2pid, Bucket, Key, S2reqopts, S2opts)
 		end,
+
 	Req1 =
 		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ?REQUEST_TIMEOUT, Req0)
 		catch T:R ->
@@ -239,21 +241,49 @@ handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, #{method := Met
 							end
 					end
 			end;
-		{404, _Headers} ->
-			cowboy_req:reply(404, Req);
+		{304 =Status, Headers} ->
+			demonitor(Mref, [flush]),
+			gun:flush(Ref),
+			cowboy_req:reply(Status, Hmod:cleanup_headers(Headers), Req);
+		{404 =Status, _Headers} ->
+			demonitor(Mref, [flush]),
+			gun:flush(Ref),
+			cowboy_req:reply(Status, Req);
 		{Status, _Headers} ->
+			demonitor(Mref, [flush]),
+			gun:flush(Ref),
 			exit({bad_riaks2_response_status, Status})
 	end.
 
--spec allow_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
-allow_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD">>) ->
-	[	{<<"range">>, fun cow_http_hd:parse_range/1},
-		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1} ];
-allow_headers(<<"PUT">>) ->
-	[ {<<"content-type">>, fun cow_http_hd:parse_content_type/1},
+-spec allow_headers(binary()) -> [binary()].
+allow_headers(<<"PUT">> =Method) ->
+	[	<<"authorization">>,
+		<<"x-datastore-acl">>
+		| [H || {H, _} <- allow_riaks2_headers(Method)]];
+allow_headers(Method) ->
+	[	<<"authorization">>
+		| [H || {H, _} <- allow_riaks2_headers(Method)]].
+
+-spec allow_riaks2_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
+allow_riaks2_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD">>) ->
+	[	{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
+		{<<"if-modified-since">>, fun cow_http_hd:parse_if_modified_since/1},
+		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
+		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1},
+		{<<"range">>, fun cow_http_hd:parse_range/1} ];
+allow_riaks2_headers(<<"PUT">>) ->
+	[	%% We can't support 'Expect: 100-continue' HTTP header,
+		%% because Cowboy doesn't support 1xx series of HTTP response codes.
+		%% https://github.com/ninenines/cowboy/issues/1049
+		%% {<<"expect">>, fun cow_http_hd:expect/1},
+		{<<"expires">>, fun cow_http_hd:parse_expires/1},
+		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
+		{<<"content-disposition">>, fun(_) -> ok end},
+		{<<"content-encoding">>, fun cow_http_hd:parse_content_encoding/1},
 		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
-		{<<"content-md5">>, fun(_) -> ok end}	];
-allow_headers(<<"DELETE">>) ->
+		{<<"content-md5">>, fun(_) -> ok end},
+		{<<"content-type">>, fun cow_http_hd:parse_content_type/1} ];
+allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
 -spec parse_params(binary(), cowboy_req:req()) -> map().
@@ -283,7 +313,7 @@ with_headers([{Key, Validate}|T], Headers, Acc) ->
 		{ok, Val} ->
 			try Validate(Val) of
 				_ -> with_headers(T, Headers, [{Key, Val}|Acc])
-			catch _:_ -> error({bad_range, Val}) end;
+			catch _:_ -> error({bad_http_header, Val}) end;
 		_ ->
 			with_headers(T, Headers, Acc)
 	end;
