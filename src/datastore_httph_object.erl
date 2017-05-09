@@ -70,9 +70,9 @@ handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
-	Hs = allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0)),
+	Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
-	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, cow_http_hd:access_control_allow_headers(Hs), Req1),
+	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, Hs, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
 handle_request(_, Req, State) ->
@@ -168,7 +168,7 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 			ok                                -> cowboy_req:reply(204, Req0);
 			{error, {bad_bucket, _Bucket}}    -> cowboy_req:reply(404, Req0);
 			{error, {bad_key, _Bucket, _Key}} -> cowboy_req:reply(404, Req0);
-			_                                 -> exit(bad_riaks2_response)
+			{error, Reason}                   -> exit({bad_riaks2_response, Reason})
 		end,
 	{ok, Req1, State}.
 
@@ -195,9 +195,10 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = P
 
 	Req2 =
 		case MaybeOk of
-			ok                             -> cowboy_req:reply(204, Req1);
-			{error, {bad_bucket, _Bucket}} -> cowboy_req:reply(404, Req1);
-			_                              -> exit(bad_riaks2_response)
+			ok                                         -> cowboy_req:reply(204, Req1);
+			{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
+			{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
+			{error, Reason}                            -> exit({bad_riaks2_response, Reason})
 		end,
 	{ok, Req2, State}.
 
@@ -241,17 +242,15 @@ handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, #{method := Met
 							end
 					end
 			end;
-		{304 =Status, Headers} ->
+		{Status, Headers} when (Status =:= 304) or (Status =:= 404) or (Status =:= 412) ->
 			demonitor(Mref, [flush]),
-			gun:flush(Ref),
+			riaks2c_http:cancel(Pid, Ref),
+			riaks2c_http:flush(Ref),
 			cowboy_req:reply(Status, Hmod:cleanup_headers(Headers), Req);
-		{404 =Status, _Headers} ->
-			demonitor(Mref, [flush]),
-			gun:flush(Ref),
-			cowboy_req:reply(Status, Req);
 		{Status, _Headers} ->
 			demonitor(Mref, [flush]),
-			gun:flush(Ref),
+			riaks2c_http:cancel(Pid, Ref),
+			riaks2c_http:flush(Ref),
 			exit({bad_riaks2_response_status, Status})
 	end.
 
@@ -266,7 +265,8 @@ allow_headers(Method) ->
 
 -spec allow_riaks2_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
 allow_riaks2_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD">>) ->
-	[	{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
+	[	{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
+		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
 		{<<"if-modified-since">>, fun cow_http_hd:parse_if_modified_since/1},
 		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
 		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1},
@@ -282,7 +282,10 @@ allow_riaks2_headers(<<"PUT">>) ->
 		{<<"content-encoding">>, fun cow_http_hd:parse_content_encoding/1},
 		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
 		{<<"content-md5">>, fun(_) -> ok end},
-		{<<"content-type">>, fun cow_http_hd:parse_content_type/1} ];
+		{<<"content-type">>, fun cow_http_hd:parse_content_type/1},
+		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
+		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
+		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1} ];
 allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
