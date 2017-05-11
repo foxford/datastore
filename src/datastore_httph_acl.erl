@@ -95,8 +95,13 @@ allowed_methods(Req, State) ->
 	{Methods, Req, State}.
 
 options(Req0, State) ->
+	Hs =
+		case cowboy_req:header(<<"access-control-request-method">>, Req0) of
+			<<"PUT">> -> <<"authorization, content-length, content-type">>;
+			_         -> <<"authorization">>
+		end,
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, PUT, DELETE">>, Req0),
-	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"Authorization, Content-Type">>, Req1),
+	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, Hs, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, Req3, State}.
 
