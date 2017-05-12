@@ -19,6 +19,9 @@ IGNORE_DEPS = \
 	folsom \
 	bear
 
+NO_AUTOPATCH = \
+	riak_pb
+
 dep_lager = git git://github.com/erlang-lager/lager.git 3.4.2
 dep_lager_syslog = git git://github.com/basho/lager_syslog.git 3.0.3
 dep_riakc_pool = git git://github.com/manifest/riak-connection-pool.git v0.2.1
