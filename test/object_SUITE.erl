@@ -190,7 +190,7 @@ update(Config) ->
 	end || {St, B, Path} <- Test].
 
 %% List of ACL groups can be passed along with creating/updating resource.
-update_with_aclgroup(Config) ->
+update_with_aclgroups(Config) ->
 	Bucket = ?config(bucket, Config),
 	Key = iolist_to_binary(datastore_cth:make_key()),
 	AclGname = <<"test">>,
@@ -226,28 +226,48 @@ update_permissions(Config) ->
 		end || A <- As]
 	end || {St, As} <- Test].
 
-%% Removes the specified object.
+%% Removes the specified object and object's ACL (default behavior).
 %% Returns 204 'No Content' status code on success and
 %% 404 'Not Found' status code when the bucket doesn't exist.
 delete(Config) ->
 	Bucket = ?config(bucket, Config),
-	BucketNotExist = datastore_cth:make_bucket(),
+	BucketNotExist = iolist_to_binary(datastore_cth:make_bucket()),
 	Key = ?config(key, Config),
-	KeyNotExist = datastore_cth:make_key(),
+	KeyNotExist = iolist_to_binary(datastore_cth:make_key()),
 	AuthorizationH = datastore_cth:authorization_header(admin, Config),
 	Test =
 		[	%% object exist
-			{204, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
+			{204, Key, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key]},
 			%% object doesn't exist
-			{204, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, KeyNotExist]},
+			{204, KeyNotExist, [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, KeyNotExist]},
 			%% bucket doesn't exist
-			{404, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
-	
+			{404, Key, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
+
+	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = datastore:resources(),
+	KVpid = riakc_pool:lock(KVpool),
 	Pid = datastore_cth:gun_open(Config),
 	[begin	
 		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
-		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
-	end || {St, Path} <- Test].
+		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
+		error = riakacl_entry:find(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, K))
+	end || {St, K, Path} <- Test],
+	riakc_pool:unlock(KVpool, KVpid).
+
+%% Removes the specified object but keeps object's ACL.
+delete_keep_aclgroups(Config) ->
+	Bucket = ?config(bucket, Config),
+	Key = ?config(key, Config),
+	AuthorizationH = datastore_cth:authorization_header(admin, Config),
+	KeepAclH = {<<"x-datastore-keep-acl">>, <<"true">>},
+	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
+
+	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = datastore:resources(),
+	KVpid = riakc_pool:lock(KVpool),
+	Pid = datastore_cth:gun_open(Config),
+	Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH, KeepAclH]),
+	{204, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
+	{ok, _} = riakacl_entry:find(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key)),
+	riakc_pool:unlock(KVpool, KVpid).
 
 %% Access is granted only for accounts w/ write permissions to the bucket,
 %% and members of 'admin' (predefined) group.

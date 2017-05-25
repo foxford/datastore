@@ -146,7 +146,7 @@ riak_connection_pools() ->
 				{ok, Conf} = erl_parse:parse_term(S),
 				#{kv_protobuf := #{host := Host, port := Port}} = Conf,
 				[	#{name => kv_protobuf,
-						size => 5,
+						size => 10,
 						connection =>
 							#{host => Host,
 								port => Port,

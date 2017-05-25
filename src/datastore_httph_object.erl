@@ -157,15 +157,27 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State);
 handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
 
-handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
+handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts},
+		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+
+	%% Removing object
 	S2pid = gunc_pool:lock(S2pool),
 	MaybeOk = riaks2c_object:await_remove(S2pid, riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts)),
 	gunc_pool:unlock(S2pool, S2pid),
 
 	Req1 =
 		case MaybeOk of
-			ok                                -> cowboy_req:reply(204, Req0);
+			ok ->
+				%% Removing ACL
+				case maps:get(keepacl, Params) of
+					true -> ignore;
+					_ ->
+						KVpid = riakc_pool:lock(KVpool),
+						riakacl_entry:remove(KVpid, AclObjBucket,  datastore_acl:object_key(Bucket, Key)),
+						riakc_pool:unlock(KVpool, KVpid)
+				end,
+				cowboy_req:reply(204, Req0);
 			{error, {bad_bucket, _Bucket}}    -> cowboy_req:reply(404, Req0);
 			{error, {bad_key, _Bucket, _Key}} -> cowboy_req:reply(404, Req0);
 			{error, Reason}                   -> exit({bad_riaks2_response, Reason})
@@ -176,16 +188,6 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = P
 	#{object := #{pool := S2pool, options := S2opts},
 		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
 
-	%% Setting up ACL
-	case maps:get(aclgroups, Params) of
-		[_|_] =Groups ->
-			KVpid = riakc_pool:lock(KVpool),
-			_ = riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), Groups),
-			riakc_pool:unlock(KVpool, KVpid);
-		_ ->
-			ignore
-	end,
-
 	%% Uploading object
 	S2pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
@@ -195,7 +197,17 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = P
 
 	Req2 =
 		case MaybeOk of
-			ok                                         -> cowboy_req:reply(204, Req1);
+			ok ->
+				%% Setting up ACL
+				case maps:get(aclgroups, Params) of
+					[_|_] =Groups ->
+						KVpid = riakc_pool:lock(KVpool),
+						_ = riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), Groups),
+						riakc_pool:unlock(KVpool, KVpid);
+					_ ->
+						ignore
+				end,
+				cowboy_req:reply(204, Req1);
 			{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
 			{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
 			{error, Reason}                            -> exit({bad_riaks2_response, Reason})
@@ -290,10 +302,10 @@ allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
 -spec parse_params(binary(), cowboy_req:req()) -> map().
-parse_params(<<"HEAD">>, Req)    -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(<<"GET">>, Req)     -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(<<"PUT">>, Req)     -> #{aclgroups => parse_aclheader(Req)};
-parse_params(<<"DELETE">>, _Req) -> #{}.
+parse_params(<<"HEAD">>, Req)   -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"GET">>, Req)    -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"PUT">>, Req)    -> #{aclgroups => parse_aclheader(Req)};
+parse_params(<<"DELETE">>, Req) -> #{keepacl => parse_keepaclheader(Req)}.
 
 -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
 parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
@@ -330,3 +342,10 @@ parse_aclheader(Req) ->
 		Val       -> datastore_acl:parse_resources(jsx:decode(Val))
 	end.
 
+-spec parse_keepaclheader(cowboy_req:req()) -> boolean().
+parse_keepaclheader(Req) ->
+	case cowboy_req:header(<<"x-datastore-keep-acl">>, Req) of
+		undefined  -> false;
+		<<"true">> -> true;
+		Val        -> error({bad_keepaclheader, Val})
+	end.
