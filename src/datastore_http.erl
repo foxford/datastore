@@ -69,7 +69,6 @@ start() ->
 		end,
 	cowboy:HttpdStart(
 		httpd,
-		datastore:httpd_acceptor_pool_size(),
 		HttpOpts,
 		maps:merge(HttpdRequiredOpts, datastore:httpd_options())).
 

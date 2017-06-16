@@ -29,7 +29,7 @@ dep_gunc_pool = git git://github.com/manifest/gun-connection-pool.git v0.1.1
 dep_riaks2c = git git://github.com/manifest/riak-s2-erlang-client.git v0.3.1
 dep_riakacl = git git://github.com/manifest/riak-acl.git v0.1.2
 dep_jose = git git://github.com/manifest/jose-erlang.git v0.1.2
-dep_cowboy = git git://github.com/ninenines/cowboy.git 304e3efbf84bcee9e2f28480da85635800949cbe
+dep_cowboy = git git://github.com/ninenines/cowboy.git 47eaadb209ae390d1371c6cb76b92b4322b9ea01
 dep_exometer = git git://github.com/Feuerlabs/exometer.git 1.2.1
 
 BUILD_DEPS = version.mk

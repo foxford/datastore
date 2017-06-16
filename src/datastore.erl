@@ -39,7 +39,6 @@
 %% Configuration
 -export([
 	http_options/0,
-	httpd_acceptor_pool_size/0,
 	httpd_options/0,
 	allowed_origins/0,
 	riak_connection_pools/0,
@@ -121,10 +120,6 @@ http_options() ->
 			{certfile, conf_path(<<"ssl/datastore.crt">>)},
 			{keyfile, conf_path(<<"ssl/datastore.key">>)} ],
 	application:get_env(?APP, ?FUNCTION_NAME, Default).
-
--spec httpd_acceptor_pool_size() -> non_neg_integer().
-httpd_acceptor_pool_size() ->
-	application:get_env(?APP, ?FUNCTION_NAME, 100).
 
 -spec httpd_options() -> map().
 httpd_options() ->
