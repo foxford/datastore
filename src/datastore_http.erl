@@ -224,7 +224,8 @@ encode_payload(ContentType, _Body)                      -> error({unsupported_co
 routes() ->
 	Opts = #{resources => datastore:resources(), authentication => datastore:authentication()},
 	Objects =
-		[	{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts} ],
+		[	{"/api[/v1]/buckets/:bucket/objects", datastore_httph_objects, Opts},
+			{"/api[/v1]/buckets/:bucket/objects/:key", datastore_httph_object, Opts} ],
 	ACL =
 		[	{"/api[/v1]/buckets/:bucket/acl", datastore_httph_acls, Opts},
 			{"/api[/v1]/buckets/:bucket/acl/:aclgname", datastore_httph_acl, Opts},
