@@ -90,8 +90,8 @@ list(Config) ->
 			%% bucket doesn't exist
 			{200, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>]} ],
 	
-	Pid = datastore_cth:gun_open(Config),
 	[begin	
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		{St, _Hs, L} = datastore_cth:gun_await_json(Pid, Ref),
 		[#{<<"id">> := _, <<"data">> := _} =Obj || Obj <- L]
@@ -113,8 +113,8 @@ list_qs(Config) ->
 			{400, <<"?lexmarker=">>},
 			{200, <<"?rows=1&lexprefix=", K/binary, "&lexmarker=", K/binary>>} ],
 	
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"GET">>, [Path, Qs], [AuthorizationH]),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || {St, Qs} <- Test].
@@ -128,9 +128,9 @@ list_permissions(Config) ->
 	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>],
 	Test = [{200, Allowed}, {403, Forbidden}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As]
@@ -150,8 +150,8 @@ read(Config) ->
 			%% bucket doesn't exist
 			{404, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
 	
-	Pid = datastore_cth:gun_open(Config),
 	[begin	
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || {St, Path} <- Test].
@@ -166,9 +166,9 @@ read_permissions(Config) ->
 	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
 	Test = [{200, Allowed}, {403, Forbidden}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As]
@@ -188,8 +188,8 @@ head(Config) ->
 			%% bucket doesn't exist
 			{404, BucketNotExist, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
 	
-	Pid = datastore_cth:gun_open(Config),
 	[begin	
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"HEAD">>, Path, [AuthorizationH]),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || {St, Path} <- Test].
@@ -204,9 +204,9 @@ head_permissions(Config) ->
 	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
 	Test = [{204, Allowed}, {403, Forbidden}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"HEAD">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As]
@@ -232,8 +232,8 @@ update(Config) ->
 			%% bucket doesn't exist
 			{404, BucketNotExist, [<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, Key]} ],
 	
-	Pid = datastore_cth:gun_open(Config),
 	[begin	
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"PUT">>, Path, [AuthorizationH, ContentTypeH, ContentLengthH], Payload),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
 
@@ -308,8 +308,8 @@ delete(Config) ->
 
 	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = datastore:resources(),
 	KVpid = riakc_pool:lock(KVpool),
-	Pid = datastore_cth:gun_open(Config),
 	[begin	
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
 		{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref),
 		error = riakacl_entry:find(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, K))
@@ -342,9 +342,9 @@ delete_permissions(Config) ->
 	Path = [<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key],
 	Test = [{204, Allowed}, {403, Forbidden}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"DELETE">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As]

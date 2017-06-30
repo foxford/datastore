@@ -105,8 +105,8 @@ list(Config) ->
 			%% object doesn't exist
 			[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl">>] ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		{200, _Hs, L} = datastore_cth:gun_await_json(Pid, Ref),
 		[#{<<"id">> := _, <<"data">> := _} =Obj || Obj <- L]
@@ -124,9 +124,9 @@ list_permissions(Config) ->
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
 	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As, Path <- Ps]
@@ -161,8 +161,8 @@ update_list(Config) ->
 			%% object doesn't exist
 			[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl">>] ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"POST">>, Path, [AuthorizationH, ContentTypeH], Payload),
 		{200, _Hs, L} = datastore_cth:gun_await_json(Pid, Ref),
 		true =
@@ -186,9 +186,9 @@ update_list_permissions(Config) ->
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl">>] ],
 	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"POST">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As, Path <- Ps]
@@ -221,8 +221,8 @@ read(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 404} ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Group = lists:last(Path),
 		Ref = gun:request(Pid, <<"GET">>, Path, [AuthorizationH]),
 		case StatusCode of
@@ -245,9 +245,9 @@ read_permissions(Config) ->
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
 	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"GET">>, Path, datastore_cth:authorization_headers(A, Config)),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As, Path <- Ps]
@@ -283,8 +283,8 @@ update(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 201} ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Group = lists:last(Path),
 		Ref = gun:request(Pid, <<"PUT">>, Path, [AuthorizationH, ContentTypeH], Payload),
 		case StatusCode of
@@ -309,9 +309,9 @@ update_permissions(Config) ->
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
 	Test = [{200, Allowed, Paths}, {403, Forbidden, Paths}],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		[begin
+			Pid = datastore_cth:gun_open(Config),
 			Ref = gun:request(Pid, <<"PUT">>, Path, [ContentTypeH | datastore_cth:authorization_headers(A, Config)], Payload),
 			{St, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 		end || A <- As, Path <- Ps]
@@ -346,9 +346,9 @@ delete(Config) ->
 			%% object doesn't exist
 			{[<<"/api/v1/buckets/">>, BucketNotExist, <<"/objects/">>, KeyNotExist, <<"/acl/">>, GroupObject], 404} ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
 		Group = lists:last(Path),
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"DELETE">>, Path, [AuthorizationH]),
 		case StatusCode of
 			200 -> {200, _Hs, #{<<"id">> := Group, <<"data">> := #{<<"access">> := GroupAccess}}} = datastore_cth:gun_await_json(Pid, Ref);
@@ -371,8 +371,8 @@ do_delete_permissions(Status, Accounts, Config) ->
 		[	[<<"/api/v1/buckets/">>, Bucket, <<"/acl/">>, GroupBucket],
 			[<<"/api/v1/buckets/">>, Bucket, <<"/objects/">>, Key, <<"/acl/">>, GroupObject] ],
 
-	Pid = datastore_cth:gun_open(Config),
 	[begin
+		Pid = datastore_cth:gun_open(Config),
 		Ref = gun:request(Pid, <<"DELETE">>, Path, datastore_cth:authorization_headers(A, Config)),
 		{Status, _Hs, _Body} = datastore_cth:gun_await(Pid, Ref)
 	end || Path <- Paths, A <- Accounts].
