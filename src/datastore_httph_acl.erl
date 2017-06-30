@@ -59,6 +59,7 @@ is_authorized(Req, #state{authconf = AuthConf} =State) ->
 			{{false, datastore_http:access_token_type()}, Req, State}
 	end.
 
+forbidden(#{method := <<"OPTIONS">>} =Req, State)                            -> {false, Req, State};
 forbidden(Req, #state{bucket = Bucket, authm = AuthM, rdesc = Rdesc} =State) ->
 	try datastore:authorize(Bucket, AuthM, Rdesc) of
 		{ok, #{write := true}} -> {false, Req, State};
