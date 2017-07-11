@@ -245,7 +245,7 @@ update(Config) ->
 				S2ref = riaks2c_object:get(S2pid, B, Key, S2opts),
 				{200, Hs} = riaks2c_object:expect_head(S2pid, S2ref),
 				{_, ContentType} = lists:keyfind(<<"content-type">>, 1, Hs),
-				Payload = riaks2c_object:expect_body(S2pid, S2ref);
+				Payload = iolist_to_binary(riaks2c_object:expect_body(S2pid, S2ref));
 			404 ->
 				{error, _} = riaks2c_object:await_get(S2pid, riaks2c_object:get(S2pid, B, Key, S2opts))
 		end,
