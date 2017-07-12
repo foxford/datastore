@@ -31,9 +31,6 @@
 	init/2
 ]).
 
-%% Definitions
--define(REQUEST_TIMEOUT, 5000).
-
 %% Types
 -record(state, {
 	rdesc           :: map(),
@@ -136,7 +133,7 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 	end.
 
 handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, handler := Hmod}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := Timeout, handler := Hmod}} = Rdesc,
 
 	S2pid = gunc_pool:lock(S2pool),
 	Ref =
@@ -146,7 +143,7 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 		end,
 
 	Req1 =
-		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ?REQUEST_TIMEOUT, Req0)
+		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, Timeout, Req0)
 		catch T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
 			cowboy_req:reply(422, Req0)

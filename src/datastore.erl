@@ -216,6 +216,7 @@ resources() ->
 				#{object =>
 						#{pool => s2_http,
 							options => UserOpts,
+							read_timeout => 60000,
 							handler => datastore_objecth},
 					account_aclsubject =>
 						#{pool => kv_protobuf,
