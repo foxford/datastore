@@ -41,6 +41,7 @@
 	http_options/0,
 	httpd_options/0,
 	allowed_origins/0,
+	preflight_request_max_age/0,
 	riak_connection_pools/0,
 	gun_connection_pools/0,
 	authentication/0,
@@ -128,6 +129,10 @@ httpd_options() ->
 -spec allowed_origins() -> Origin | [Origin] | '*' when Origin :: {binary(), binary(), 0..65535}.
 allowed_origins() ->
 	application:get_env(?APP, ?FUNCTION_NAME, '*').
+
+-spec preflight_request_max_age() -> binary().
+preflight_request_max_age() ->
+	application:get_env(?APP, ?FUNCTION_NAME, <<"0">>).
 
 -spec riak_connection_pools() -> [map()].
 riak_connection_pools() ->

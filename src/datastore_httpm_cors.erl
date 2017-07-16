@@ -43,7 +43,8 @@ execute(#{headers := #{<<"origin">> := HeaderVal}} =Req0, Env) ->
 		true ->
 			Req1 = cowboy_req:set_resp_header(<<"access-control-allow-origin">>, HeaderVal, Req0),
 			Req2 = cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, Req1),
-			{ok, Req2, Env};
+			Req3 = maybe_set_access_control_max_age_header(Req2, Env),
+			{ok, Req3, Env};
 		_ ->
 			{ok, Req0, Env}
 	end;
@@ -60,3 +61,10 @@ check_origin(_, '*')                          -> true;
 check_origin(Val, Val)                        -> true;
 check_origin(Val, L) when is_list(L)          -> lists:member(Val, L);
 check_origin(_, _)                            -> false.
+
+maybe_set_access_control_max_age_header(#{method := <<"OPTIONS">>} =Req, #{preflight_request_max_age := <<"0">>}) ->
+	Req;
+maybe_set_access_control_max_age_header(#{method := <<"OPTIONS">>} =Req, #{preflight_request_max_age := Val}) ->
+	cowboy_req:set_resp_header(<<"access-control-max-age">>, Val, Req);
+maybe_set_access_control_max_age_header(Req, _Env) ->
+	Req.

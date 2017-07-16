@@ -57,11 +57,15 @@
 
 -spec start() -> {ok, pid()} | {error, any()}.
 start() ->
+	Env =
+		#{dispatch => dispatch(),
+			allowed_origins => datastore:allowed_origins(),
+			preflight_request_max_age => datastore:preflight_request_max_age()},
 	HttpOpts = datastore:http_options(),
 	HttpdRequiredOpts =
 		#{stream_handlers => [datastore_streamh_log, cowboy_stream_h],
 			middlewares => [datastore_httpm_cors, cowboy_router, cowboy_handler],
-			env => #{dispatch => dispatch(), allowed_origins => datastore:allowed_origins()}},
+			env => Env},
 	HttpdStart =
 		case lists:keyfind(certfile, 1, HttpOpts) of
 			{certfile, _Val} -> start_tls;
