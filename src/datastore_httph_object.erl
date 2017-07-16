@@ -133,7 +133,7 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 	end.
 
 handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := Timeout, handler := Hmod}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout, handler := Hmod}} = Rdesc,
 
 	S2pid = gunc_pool:lock(S2pool),
 	Ref =
@@ -143,7 +143,7 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 		end,
 
 	Req1 =
-		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, Timeout, Req0)
+		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ReadTimeout, Req0)
 		catch T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
 			cowboy_req:reply(422, Req0)
@@ -155,12 +155,12 @@ handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State)
 handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
 
 handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts},
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout},
 		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
 
 	%% Removing object
 	S2pid = gunc_pool:lock(S2pool),
-	MaybeOk = riaks2c_object:await_remove(S2pid, riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts)),
+	MaybeOk = riaks2c_object:await_remove(S2pid, riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts), ReadTimeout),
 	gunc_pool:unlock(S2pool, S2pid),
 
 	Req1 =
@@ -182,14 +182,14 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = P
 	{ok, Req1, State}.
 
 handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts},
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout},
 		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
 
 	%% Uploading object
 	S2pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
 	Req1 = upstream_body(S2pid, Ref, Req0),
-	MaybeOk = riaks2c_object:await_put(S2pid, Ref),
+	MaybeOk = riaks2c_object:await_put(S2pid, Ref, ReadTimeout),
 	gunc_pool:unlock(S2pool, S2pid),
 
 	Req2 =
