@@ -155,62 +155,93 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State);
 handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
 
-handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout},
-		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Removing object
 	S2pid = gunc_pool:lock(S2pool),
-	MaybeOk = riaks2c_object:await_remove(S2pid, riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts), ReadTimeout),
+	Ref = riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts),
+	MaybeOk =
+		try riaks2c_object:await_remove(S2pid, Ref, ReadTimeout)
+		catch T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			riaks2c_http:cancel(S2pid, Ref),
+			{error, uncertain_operation_state}
+		end,
 	gunc_pool:unlock(S2pool, S2pid),
 
+	%% Removing ACL (if object has been successfully removed)
 	Req1 =
 		case MaybeOk of
-			ok ->
-				%% Removing ACL
-				case maps:get(keepacl, Params) of
-					true -> ignore;
-					_ ->
-						KVpid = riakc_pool:lock(KVpool),
-						riakacl_entry:remove(KVpid, AclObjBucket,  datastore_acl:object_key(Bucket, Key)),
-						riakc_pool:unlock(KVpool, KVpid)
-				end,
-				cowboy_req:reply(204, Req0);
-			{error, {bad_bucket, _Bucket}}    -> cowboy_req:reply(404, Req0);
-			{error, {bad_key, _Bucket, _Key}} -> cowboy_req:reply(404, Req0);
-			{error, Reason}                   -> exit({bad_riaks2_response, Reason})
+			ok                                 -> handle_delete_acl(204, Req0, State);
+			{error, {bad_bucket, _Bucket}}     -> handle_delete_acl(404, Req0, State);
+			{error, {bad_key, _Bucket, _Key}}  -> handle_delete_acl(404, Req0, State);
+			{error, uncertain_operation_state} -> cowboy_req:reply(422, Req0);
+			{error, Reason}                    -> exit({bad_riaks2_response, Reason})
 		end,
 	{ok, Req1, State}.
 
-handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout},
-		object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+handle_delete_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params}) ->
+	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+	case maps:get(keepacl, Params) of
+		true -> ignore;
+		_ ->
+			KVpid = riakc_pool:lock(KVpool),
+			try riakacl_entry:remove(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key))
+			catch T:R -> ?ERROR_REPORT(datastore_http_log:format_request(Req), T, R) end,
+			riakc_pool:unlock(KVpool, KVpid)
+	end,
+	cowboy_req:reply(SuccessStatus, Req).
+
+handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Uploading object
 	S2pid = gunc_pool:lock(S2pool),
 	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
 	Req1 = upstream_body(S2pid, Ref, Req0),
-	MaybeOk = riaks2c_object:await_put(S2pid, Ref, ReadTimeout),
+	MaybeOk = 
+		try riaks2c_object:await_put(S2pid, Ref, ReadTimeout)
+		catch T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			riaks2c_http:cancel(S2pid, Ref),
+			{error, uncertain_operation_state}
+		end,
 	gunc_pool:unlock(S2pool, S2pid),
 
 	Req2 =
 		case MaybeOk of
-			ok ->
-				%% Setting up ACL
-				case maps:get(aclgroups, Params) of
-					[_|_] =Groups ->
-						KVpid = riakc_pool:lock(KVpool),
-						_ = riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), Groups),
-						riakc_pool:unlock(KVpool, KVpid);
-					_ ->
-						ignore
-				end,
-				cowboy_req:reply(204, Req1);
+			ok                                         -> handle_update_acl(204, Req1, State);
 			{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
 			{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
+			{error, uncertain_operation_state}         -> cowboy_req:reply(422, Req1);
 			{error, Reason}                            -> exit({bad_riaks2_response, Reason})
 		end,
 	{ok, Req2, State}.
+
+handle_update_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params}) ->
+	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
+
+	case maps:get(aclgroups, Params) of
+		[_|_] =Groups ->
+			KVpid = riakc_pool:lock(KVpool),
+			Req2 =
+				try riakacl:put_object_acl(KVpid, AclObjBucket, datastore_acl:object_key(Bucket, Key), Groups) of
+					_ ->
+						%% ACL groups have been successfully updated
+						cowboy_req:reply(SuccessStatus, Req)
+				catch
+					T:R ->
+						%% ACL groups haven't been updated 
+						?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+						cowboy_req:reply(422, Req)
+				end,
+			riakc_pool:unlock(KVpool, KVpid),
+			Req2;
+		_ ->
+			%% No ACL groups to update
+			cowboy_req:reply(SuccessStatus, Req)
+	end.
 
 -spec upstream_body(pid(), reference(), Req) -> Req when Req :: cowboy_req:req().
 upstream_body(Pid, Ref, Req0) ->
