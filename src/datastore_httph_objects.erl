@@ -129,12 +129,11 @@ to_json(Req, #state{bucket = Bucket, params = Params, rdesc = Rdesc} =State) ->
 
 -spec handle_list(binary(), riaks2c_http:request_options(), map()) -> [map()].
 handle_list(Bucket, ReqOpts, Rdesc) ->
-	#{object := #{pool := S2pool, options := S2opts}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 	S2pid = gunc_pool:lock(S2pool),
-	Resp = riaks2c_object:await_list(S2pid, riaks2c_object:list(S2pid, Bucket, ReqOpts, S2opts)),
+	Resp = riaks2c_object:await_list(S2pid, riaks2c_object:list(S2pid, Bucket, ReqOpts, S2opts), ReadTimeout),
 	gunc_pool:unlock(S2pool, S2pid),
 
-	error_logger:info_report([Resp]),
 	case Resp of
 		{error, {bad_bucket, _Bucket}}                    -> [];
 		{ok, #'ListBucketResult'{'Contents' = undefined}} -> [];
