@@ -146,6 +146,7 @@ handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params =
 		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ReadTimeout, Req0)
 		catch T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			riaks2c_http:cancel(S2pid, Ref),
 			cowboy_req:reply(422, Req0)
 		end,
 	gunc_pool:unlock(S2pool, S2pid),
