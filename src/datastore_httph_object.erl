@@ -299,10 +299,14 @@ allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
 -spec parse_params(binary(), cowboy_req:req()) -> map().
-parse_params(<<"HEAD">>, Req)   -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(<<"GET">>, Req)    -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(<<"PUT">>, Req)    -> #{aclgroups => parse_aclheader(Req)};
-parse_params(<<"DELETE">>, Req) -> #{keepacl => parse_keepaclheader(Req)}.
+parse_params(<<"HEAD">>, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"GET">>, Req)  -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"PUT">>, Req) ->
+	true = cowboy_req:has_body(Req),
+	true = undefined =/= cowboy_req:header(<<"content-length">>, Req),
+	#{aclgroups => parse_aclheader(Req)};
+parse_params(<<"DELETE">>, Req) ->
+	#{keepacl => parse_keepaclheader(Req)}.
 
 -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
 parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
