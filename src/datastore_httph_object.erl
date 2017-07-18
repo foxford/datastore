@@ -135,7 +135,7 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout, handler := Hmod}} = Rdesc,
 
-	try gunc_pool:lock(S2pool) of
+	try gunc_pool:lock(S2pool, ReadTimeout) of
 		S2pid ->
 			Ref =
 				case Method of
@@ -165,7 +165,7 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Removing object
-	try gunc_pool:lock(S2pool) of
+	try gunc_pool:lock(S2pool, ReadTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts),
 			MaybeOk =
@@ -209,7 +209,7 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Uploading object
-	try gunc_pool:lock(S2pool) of
+	try gunc_pool:lock(S2pool, ReadTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
 			Req1 = upstream_body(S2pid, Ref, Req0),
