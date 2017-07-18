@@ -183,7 +183,7 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 					ok                                 -> handle_delete_acl(204, Req0, State);
 					{error, {bad_bucket, _Bucket}}     -> handle_delete_acl(404, Req0, State);
 					{error, {bad_key, _Bucket, _Key}}  -> handle_delete_acl(404, Req0, State);
-					{error, uncertain_operation_state} -> cowboy_req:reply(422, Req0);
+					{error, uncertain_operation_state} -> cowboy_req:reply(504, Req0);
 					{error, Reason}                    -> exit({bad_riaks2_response, Reason})
 				end,
 			{ok, Req1, State}
@@ -227,7 +227,7 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 					ok                                         -> handle_update_acl(204, Req1, State);
 					{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
 					{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
-					{error, uncertain_operation_state}         -> cowboy_req:reply(422, Req1);
+					{error, uncertain_operation_state}         -> cowboy_req:reply(504, Req1);
 					{error, Reason}                            -> exit({bad_riaks2_response, Reason})
 				end,
 			{ok, Req2, State}
