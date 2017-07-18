@@ -118,8 +118,8 @@ handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key,
 		_                     -> {ok, cowboy_req:reply(403, Req), State}
 	catch
 		T:R ->
-		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-		{ok, cowboy_req:reply(422, Req), State}
+			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+			{ok, cowboy_req:reply(422, Req), State}
 	end.
 
 handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
@@ -128,29 +128,35 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 		_                      -> {ok, cowboy_req:reply(403, Req), State}
 	catch
 		T:R ->
-		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-		{ok, cowboy_req:reply(422, Req), State}
+			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+			{ok, cowboy_req:reply(422, Req), State}
 	end.
 
 handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout, handler := Hmod}} = Rdesc,
 
-	S2pid = gunc_pool:lock(S2pool),
-	Ref =
-		case Method of
-			<<"HEAD">> -> riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts);
-			<<"GET">>  -> riaks2c_object:get(S2pid, Bucket, Key, S2reqopts, S2opts)
-		end,
+	try gunc_pool:lock(S2pool) of
+		S2pid ->
+			Ref =
+				case Method of
+					<<"HEAD">> -> riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts);
+					<<"GET">>  -> riaks2c_object:get(S2pid, Bucket, Key, S2reqopts, S2opts)
+				end,
 
-	Req1 =
-		try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ReadTimeout, Req0)
-		catch T:R ->
+			Req1 =
+				try handle_read_stream(Hmod, Bucket, Key, Params, S2pid, Ref, ReadTimeout, Req0)
+				catch T:R ->
+					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					riaks2c_http:cancel(S2pid, Ref),
+					cowboy_req:reply(422, Req0)
+				end,
+			gunc_pool:unlock(S2pool, S2pid),
+			{ok, Req1, State}
+	catch
+		T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
-			riaks2c_http:cancel(S2pid, Ref),
-			cowboy_req:reply(422, Req0)
-		end,
-	gunc_pool:unlock(S2pool, S2pid),
-	{ok, Req1, State}.
+			{ok, cowboy_req:reply(503, Req0), State}
+	end.
 
 handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State);
 handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
@@ -159,27 +165,33 @@ handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Removing object
-	S2pid = gunc_pool:lock(S2pool),
-	Ref = riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts),
-	MaybeOk =
-		try riaks2c_object:await_remove(S2pid, Ref, ReadTimeout)
-		catch T:R ->
-			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
-			riaks2c_http:cancel(S2pid, Ref),
-			{error, uncertain_operation_state}
-		end,
-	gunc_pool:unlock(S2pool, S2pid),
+	try gunc_pool:lock(S2pool) of
+		S2pid ->
+			Ref = riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts),
+			MaybeOk =
+				try riaks2c_object:await_remove(S2pid, Ref, ReadTimeout)
+				catch T:R ->
+					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					riaks2c_http:cancel(S2pid, Ref),
+					{error, uncertain_operation_state}
+				end,
+			gunc_pool:unlock(S2pool, S2pid),
 
-	%% Removing ACL (if object has been successfully removed)
-	Req1 =
-		case MaybeOk of
-			ok                                 -> handle_delete_acl(204, Req0, State);
-			{error, {bad_bucket, _Bucket}}     -> handle_delete_acl(404, Req0, State);
-			{error, {bad_key, _Bucket, _Key}}  -> handle_delete_acl(404, Req0, State);
-			{error, uncertain_operation_state} -> cowboy_req:reply(422, Req0);
-			{error, Reason}                    -> exit({bad_riaks2_response, Reason})
-		end,
-	{ok, Req1, State}.
+			%% Removing ACL (if object has been successfully removed)
+			Req1 =
+				case MaybeOk of
+					ok                                 -> handle_delete_acl(204, Req0, State);
+					{error, {bad_bucket, _Bucket}}     -> handle_delete_acl(404, Req0, State);
+					{error, {bad_key, _Bucket, _Key}}  -> handle_delete_acl(404, Req0, State);
+					{error, uncertain_operation_state} -> cowboy_req:reply(422, Req0);
+					{error, Reason}                    -> exit({bad_riaks2_response, Reason})
+				end,
+			{ok, Req1, State}
+	catch
+		T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			{ok, cowboy_req:reply(503, Req0), State}
+	end.
 
 handle_delete_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params}) ->
 	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
@@ -197,27 +209,33 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Uploading object
-	S2pid = gunc_pool:lock(S2pool),
-	Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
-	Req1 = upstream_body(S2pid, Ref, Req0),
-	MaybeOk = 
-		try riaks2c_object:await_put(S2pid, Ref, ReadTimeout)
-		catch T:R ->
-			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
-			riaks2c_http:cancel(S2pid, Ref),
-			{error, uncertain_operation_state}
-		end,
-	gunc_pool:unlock(S2pool, S2pid),
+	try gunc_pool:lock(S2pool) of
+		S2pid ->
+			Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
+			Req1 = upstream_body(S2pid, Ref, Req0),
+			MaybeOk = 
+				try riaks2c_object:await_put(S2pid, Ref, ReadTimeout)
+				catch T:R ->
+					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					riaks2c_http:cancel(S2pid, Ref),
+					{error, uncertain_operation_state}
+				end,
+			gunc_pool:unlock(S2pool, S2pid),
 
-	Req2 =
-		case MaybeOk of
-			ok                                         -> handle_update_acl(204, Req1, State);
-			{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
-			{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
-			{error, uncertain_operation_state}         -> cowboy_req:reply(422, Req1);
-			{error, Reason}                            -> exit({bad_riaks2_response, Reason})
-		end,
-	{ok, Req2, State}.
+			Req2 =
+				case MaybeOk of
+					ok                                         -> handle_update_acl(204, Req1, State);
+					{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
+					{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
+					{error, uncertain_operation_state}         -> cowboy_req:reply(422, Req1);
+					{error, Reason}                            -> exit({bad_riaks2_response, Reason})
+				end,
+			{ok, Req2, State}
+	catch
+		T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+			{ok, cowboy_req:reply(503, Req0), State}
+	end.
 
 handle_update_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = Bucket, params = Params}) ->
 	#{object_aclobject := #{pool := KVpool, bucket := AclObjBucket}} = Rdesc,
