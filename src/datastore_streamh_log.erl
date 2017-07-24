@@ -48,6 +48,8 @@
 %% =============================================================================
 
 init(StreamId, Req, Opts) ->
+	_ = exometer:update([datastore,request,http,count], 1),
+
 	StartedAt = datastore:unix_time_us(),
 	Context = [{http_started_at, StartedAt} | datastore_http_log:format_request(Req)],
 	?INFO_REPORT(Context),
