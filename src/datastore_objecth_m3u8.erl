@@ -65,9 +65,14 @@ handle_read(_Bucket, _Key, #{access_token := Token}, 200 =Status, Headers) ->
 	%% (for user agents that can't use Authorization HTTP header).
 	%% We only support responses with 200 status code because
 	%% it's imposible to parse URIs for byte range requests.
-	Hs0 = datastore_objecth:cleanup_content_headers(Headers),
-	Hs1 = Hs0#{<<"content-type">> => ?CONTENT_TYPE},
-	{stream, Status, Hs1, {?MODULE, #state{t = Token}}};
+	case lists:keyfind(<<"content-encoding">>, 1, Headers) of
+		false ->
+			Hs0 = datastore_objecth:cleanup_content_headers(Headers),
+			Hs1 = Hs0#{<<"content-type">> => ?CONTENT_TYPE},
+			{stream, Status, Hs1, {?MODULE, #state{t = Token}}};
+		_ ->
+			{stream, Status, cleanup_headers(Headers), ignore}
+	end;
 handle_read(_Bucket, _Key, _Params, Status, Headers) ->
 	{stream, Status, cleanup_headers(Headers), ignore}.
 
