@@ -168,10 +168,16 @@ find_resource(Name, E) ->
 		error     -> error
 	end.
 
+%% Note: we convert expiration time from seconds to microseconds
+%% because it's presented in seconds for DataStore API,
+%% and in microseconds for Riak ACL library.
 -spec parse_resource_data([{binary(), any()}], binary() | undefined, map()) -> riakacl_group:group().
 parse_resource_data([{<<"access">>, Val}|T], _Access, Claims) -> parse_resource_data(T, Val, Claims);
-parse_resource_data([{<<"exp">>, Val}|T], Access, Claims)     -> parse_resource_data(T, Access, Claims#{exp => Val});
+parse_resource_data([{<<"exp">>, Val}|T], Access, Claims)     -> parse_resource_data(T, Access, Claims#{exp => to_us(Val)});
 parse_resource_data([_|T], Access, Claims)                    -> parse_resource_data(T, Access, Claims);
 parse_resource_data([], undefined, _Claims)                   -> throw(missing_access);
 parse_resource_data([], Access, Claims)                       -> riakacl_rwaccess:new_dt(Access, Claims).
 
+-spec to_us(non_neg_integer()) -> non_neg_integer().
+to_us(Sec) ->
+	Sec *1000000.
