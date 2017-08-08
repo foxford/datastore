@@ -239,31 +239,37 @@ handle_delete_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = 
 	cowboy_req:reply(SuccessStatus, Req).
 
 handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, write_timeout := WriteTimeout}} = Rdesc,
 
 	%% Uploading object
-	try gunc_pool:lock(S2pool, ReadTimeout) of
+	try gunc_pool:lock(S2pool, WriteTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
-			Req1 = upstream_body(S2pid, Ref, Req0),
-			MaybeOk = 
-				try riaks2c_object:await_put(S2pid, Ref, ReadTimeout)
-				catch T:R ->
-					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
-					riaks2c_http:cancel(S2pid, Ref),
-					{error, uncertain_operation_state}
-				end,
-			gunc_pool:unlock(S2pool, S2pid),
+			try upstream_body(S2pid, Ref, WriteTimeout, Req0) of
+				Req1 ->
+					MaybeOk = 
+						try riaks2c_object:await_put(S2pid, Ref, WriteTimeout)
+						catch T:R ->
+							?ERROR_REPORT(datastore_http_log:format_request(Req1), T, R),
+							riaks2c_http:cancel(S2pid, Ref),
+							{error, uncertain_operation_state}
+						end,
+					gunc_pool:unlock(S2pool, S2pid),
 
-			Req2 =
-				case MaybeOk of
-					ok                                         -> handle_update_acl(204, Req1, State);
-					{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
-					{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
-					{error, uncertain_operation_state}         -> cowboy_req:reply(504, Req1);
-					{error, Reason}                            -> exit({bad_riaks2_response, Reason})
-				end,
-			{ok, Req2, State}
+					Req2 =
+						case MaybeOk of
+							ok                                         -> handle_update_acl(204, Req1, State);
+							{error, {bad_bucket, _Bucket}}             -> cowboy_req:reply(404, Req1);
+							{error, {bad_precondition, _Bucket, _Key}} -> cowboy_req:reply(412, Req1);
+							{error, uncertain_operation_state}         -> cowboy_req:reply(504, Req1);
+							{error, Reason}                            -> exit({bad_riaks2_response, Reason})
+						end,
+					{ok, Req2, State}
+			catch
+				T:R ->
+					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					{ok, cowboy_req:reply(422, Req0), State}
+			end
 	catch
 		T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
@@ -294,15 +300,15 @@ handle_update_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = 
 			cowboy_req:reply(SuccessStatus, Req)
 	end.
 
--spec upstream_body(pid(), reference(), Req) -> Req when Req :: cowboy_req:req().
-upstream_body(Pid, Ref, Req0) ->
-	case cowboy_req:read_body(Req0) of
+-spec upstream_body(pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
+upstream_body(Pid, Ref, WriteTimeout, Req0) ->
+	case cowboy_req:read_body(Req0, #{timeout => WriteTimeout}) of
 		{ok, Data, Req1} ->
 			gun:data(Pid, Ref, fin, Data),
 			Req1;
 		{more, Data, Req1} ->
 			gun:data(Pid, Ref, nofin, Data),
-			upstream_body(Pid, Ref, Req1)
+			upstream_body(Pid, Ref, WriteTimeout, Req1)
 	end.
 
 -spec handle_read_stream(module(), binary(), binary(), map(), pid(), reference(), non_neg_integer(), Req) -> Req when Req :: cowboy_req:req().
