@@ -87,7 +87,7 @@ conf_path(Path) ->
 		_        -> Path
 	end.
 
--spec authorize(binary(), map(), map()) -> {ok, map()} | error.
+-spec authorize(binary(), map(), map()) -> {ok, map()} | {error, any()}.
 authorize(AclOkey, AuthM, Rdesc) ->
 	#{account_aclsubject := #{bucket := AclSb, pool := KVpool},
 		object_aclobject := #{bucket := AclOb},

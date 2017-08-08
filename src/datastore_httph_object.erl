@@ -114,12 +114,45 @@ handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_auth
 
 handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 	try datastore:authorize(datastore_acl:object_key(Bucket, Key), AuthM, Rdesc) of
-		{ok, #{read := true}} -> handle_read(Req, State);
-		_                     -> {ok, cowboy_req:reply(403, Req), State}
+		{ok, #{read := true}}      -> handle_read(Req, State);
+		{ok, _}                    -> handle_read_authorization_maybe_notfound(Req, State);
+		{error, bad_aclobject_key} -> handle_read_authorization_maybe_notfound(Req, State);
+		_                          -> {ok, cowboy_req:reply(403, Req), State}
 	catch
 		T:R ->
 			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
 			{ok, cowboy_req:reply(422, Req), State}
+	end.
+
+%% If subject doesn't have access to non-existent object
+%%   - and doesn't have read access to object's bucket, 403 status code is returned
+%%   - but have read access to object's bucket, 404 status code is returned
+handle_read_authorization_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
+	try datastore:authorize(Bucket, AuthM, Rdesc) of
+		{ok, #{read := true}} -> handle_maybe_notfound(Req, State);
+		_                     -> {ok, cowboy_req:reply(403, Req), State}
+	catch T:R ->
+		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+		{stop, cowboy_req:reply(422, Req), State}
+	end.
+
+handle_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, s2reqopts = S2reqopts} =State) ->
+	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
+	try gunc_pool:lock(S2pool, ReadTimeout) of
+		S2pid ->
+			Ref = riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts),
+			try riaks2c_object:expect_head(S2pid, Ref, ReadTimeout) of
+				{Status, _Headers} when Status >= 200, Status < 300 ->
+					{ok, cowboy_req:reply(403, Req)};
+				_ ->
+					{ok, cowboy_req:reply(404, Req)}
+			catch T:R ->
+				?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+				{ok, cowboy_req:reply(422, Req), State}
+			end
+	catch T:R ->
+		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+		{ok, cowboy_req:reply(503, Req), State}
 	end.
 
 handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
