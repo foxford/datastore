@@ -136,23 +136,25 @@ handle_read_authorization_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Buc
 		{stop, cowboy_req:reply(422, Req), State}
 	end.
 
-handle_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, s2reqopts = S2reqopts} =State) ->
+handle_maybe_notfound(Req0, #state{rdesc = Rdesc, bucket = Bucket, key = Key, s2reqopts = S2reqopts} =State) ->
 	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, read_timeout := ReadTimeout}} = Rdesc,
 	try gunc_pool:lock(S2pool, LockTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts),
-			try riaks2c_object:expect_head(S2pid, Ref, ReadTimeout) of
-				{Status, _Headers} when Status >= 200, Status < 300 ->
-					{ok, cowboy_req:reply(403, Req)};
-				_ ->
-					{ok, cowboy_req:reply(404, Req)}
-			catch T:R ->
-				?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-				{ok, cowboy_req:reply(422, Req), State}
-			end
+			Req1 =
+				try riaks2c_object:expect_head(S2pid, Ref, ReadTimeout) of
+					{Status, _Headers} when Status >= 200, Status < 300 -> cowboy_req:reply(403, Req0);
+					_                                                   -> cowboy_req:reply(404, Req0)
+				catch T:R ->
+					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					riaks2c_http:cancel(S2pid, Ref),
+					cowboy_req:reply(422, Req0)
+				end,
+			gunc_pool:unlock(S2pool, S2pid),
+			{ok, Req1, State}
 	catch T:R ->
-		?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-		{ok, cowboy_req:reply(503, Req), State}
+		?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+		{ok, cowboy_req:reply(503, Req0), State}
 	end.
 
 handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
@@ -268,6 +270,7 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 			catch
 				T:R ->
 					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					gunc_pool:unlock(S2pool, S2pid),
 					{ok, cowboy_req:reply(422, Req0), State}
 			end
 	catch
