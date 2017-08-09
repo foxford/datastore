@@ -221,6 +221,7 @@ resources() ->
 				#{object =>
 						#{pool => s2_http,
 							options => UserOpts,
+							lock_timeout => 5000,
 							read_timeout => 60000,
 							write_timeout => 60000,
 							handler => datastore_objecth},

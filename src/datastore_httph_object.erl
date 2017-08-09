@@ -137,8 +137,8 @@ handle_read_authorization_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Buc
 	end.
 
 handle_maybe_notfound(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
-	try gunc_pool:lock(S2pool, ReadTimeout) of
+	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, read_timeout := ReadTimeout}} = Rdesc,
+	try gunc_pool:lock(S2pool, LockTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:head(S2pid, Bucket, Key, S2reqopts, S2opts),
 			try riaks2c_object:expect_head(S2pid, Ref, ReadTimeout) of
@@ -166,9 +166,9 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 	end.
 
 handle_read(#{method := Method} =Req0, #state{rdesc = Rdesc, key = Key, params = Params, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout, handler := Hmod}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, read_timeout := ReadTimeout, handler := Hmod}} = Rdesc,
 
-	try gunc_pool:lock(S2pool, ReadTimeout) of
+	try gunc_pool:lock(S2pool, LockTimeout) of
 		S2pid ->
 			Ref =
 				case Method of
@@ -195,10 +195,10 @@ handle_write(#{method := <<"PUT">>} =Req, State)    -> handle_update(Req, State)
 handle_write(#{method := <<"DELETE">>} =Req, State) -> handle_delete(Req, State).
 
 handle_delete(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, read_timeout := ReadTimeout}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, read_timeout := ReadTimeout}} = Rdesc,
 
 	%% Removing object
-	try gunc_pool:lock(S2pool, ReadTimeout) of
+	try gunc_pool:lock(S2pool, LockTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:remove(S2pid, Bucket, Key, S2reqopts, S2opts),
 			MaybeOk =
@@ -239,10 +239,10 @@ handle_delete_acl(SuccessStatus, Req, #state{rdesc = Rdesc, key = Key, bucket = 
 	cowboy_req:reply(SuccessStatus, Req).
 
 handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts = S2reqopts} =State) ->
-	#{object := #{pool := S2pool, options := S2opts, write_timeout := WriteTimeout}} = Rdesc,
+	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, write_timeout := WriteTimeout}} = Rdesc,
 
 	%% Uploading object
-	try gunc_pool:lock(S2pool, WriteTimeout) of
+	try gunc_pool:lock(S2pool, LockTimeout) of
 		S2pid ->
 			Ref = riaks2c_object:put(S2pid, Bucket, Key, <<>>, S2reqopts, S2opts),
 			try upstream_body(S2pid, Ref, WriteTimeout, Req0) of
