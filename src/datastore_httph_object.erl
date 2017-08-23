@@ -270,6 +270,7 @@ handle_update(Req0, #state{rdesc = Rdesc, key = Key, bucket = Bucket, s2reqopts 
 			catch
 				T:R ->
 					?ERROR_REPORT(datastore_http_log:format_request(Req0), T, R),
+					riaks2c_http:cancel(S2pid, Ref),
 					gunc_pool:unlock(S2pool, S2pid),
 					{ok, cowboy_req:reply(422, Req0), State}
 			end
