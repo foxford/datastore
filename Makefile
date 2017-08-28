@@ -22,7 +22,7 @@ IGNORE_DEPS = \
 NO_AUTOPATCH = \
 	riak_pb
 
-dep_lager = git git://github.com/erlang-lager/lager.git 3.4.2
+dep_lager = git git://github.com/erlang-lager/lager.git 3.5.1
 dep_lager_syslog = git git://github.com/basho/lager_syslog.git 3.0.3
 dep_riakc_pool = git git://github.com/manifest/riak-connection-pool.git v0.2.1
 dep_gunc_pool = git git://github.com/manifest/gun-connection-pool.git v0.1.1
