@@ -1,4 +1,4 @@
-# Data Store
+# Datastore
 
 [![Build Status][travis-img]][travis]
 
