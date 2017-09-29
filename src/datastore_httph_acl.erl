@@ -75,7 +75,7 @@ is_authorized(#{method := <<"OPTIONS">>} =Req, State)  -> {true, Req, State};
 is_authorized(Req, #state{authconf = AuthConf} =State) ->
 	try datastore_http:decode_access_token(Req, AuthConf) of
 		TokenPayload ->
-			?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
+			%% ?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
 			{true, Req, State#state{authm = TokenPayload}}
 	catch
 		T:R ->

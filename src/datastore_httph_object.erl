@@ -100,7 +100,7 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 		#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
 		_                        -> datastore_http:decode_access_token(Req, AuthConf)
 	end of TokenPayload ->
-		?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
+		%% ?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
 		handle_authorization(Req, State#state{authm = TokenPayload})
 	catch T:R ->
 		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),

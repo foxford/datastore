@@ -52,7 +52,6 @@ init(StreamId, Req, Opts) ->
 
 	StartedAt = datastore:unix_time_us(),
 	Context = [{http_started_at, StartedAt} | datastore_http_log:format_request(Req)],
-	?INFO_REPORT(Context),
 
 	{Ncmd, Nstate} = cowboy_stream:init(StreamId, Req, Opts),
 	{Ncmd, #state{next = Nstate, cat = StartedAt, ctx = Context}}.
@@ -87,7 +86,10 @@ early_error(StreamId, Reason, PartialReq, Resp, Opts) ->
 handle_response(StartedAt, Status, Headers, Context) ->
 	Duration = duration(StartedAt),
 	_ = exometer:update([datastore,request,http,duration], Duration),
-	?INFO_REPORT([{http_duration, Duration} | datastore_http_log:format_response(Status, Headers, Context)]).
+	case (Status >= 200) andalso (Status < 300) of
+		true -> ok;
+		_    -> ?INFO_REPORT([{http_duration, Duration} | datastore_http_log:format_response(Status, Headers, Context)])
+	end.
 
 -spec handle_terminate(atom(), non_neg_integer(), datastore_http_log:kvlist()) -> ok.
 handle_terminate(normal, _StartedAt, _Context)        -> ok;
