@@ -98,7 +98,7 @@ handle_read(Bucket, Key, Params, Status, Headers) ->
 		Stream :: cowboy_req:req(),
 		State  :: any().
 handle_read_stream(IsFin, Data, Stream, {Mod, State}) ->
-	Mod:handle_read_stream(IsFin, Data, Stream, State);
+	{Mod, Mod:handle_read_stream(IsFin, Data, Stream, State)};
 handle_read_stream(IsFin, Data, Stream, State) ->
 	cowboy_req:stream_body(Data, IsFin, Stream),
 	State.
