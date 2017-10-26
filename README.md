@@ -62,8 +62,8 @@ ACCESS_TOKEN='eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0LWFkbWluQGV4Y
 
 The source code is provided under the terms of [the MIT license][license].
 
-[api-object]:https://github.com/manifest/datastore/blob/master/API_OBJECT.md
-[api-object-acl]:https://github.com/manifest/datastore/blob/master/API_OBJECT_ACL.md
+[api-object]:https://github.com/foxford/datastore/blob/master/API_OBJECT.md
+[api-object-acl]:https://github.com/foxford/datastore/blob/master/API_OBJECT_ACL.md
 [license]:http://www.opensource.org/licenses/MIT
-[travis]:https://travis-ci.org/manifest/datastore?branch=master
-[travis-img]:https://secure.travis-ci.org/manifest/datastore.png?branch=master
+[travis]:https://travis-ci.org/foxford/datastore?branch=master
+[travis-img]:https://secure.travis-ci.org/foxford/datastore.png?branch=master
