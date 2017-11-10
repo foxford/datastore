@@ -98,7 +98,7 @@ authorize(AclOkey, AuthM, Rdesc) ->
 	Pid = riakc_pool:lock(KVpool),
 	Result =
 		case maps:find(<<"sub">>, AuthM) of
-			{ok, AclSkey} -> riakacl:authorize_predefined_object(Pid, AclSb, AclSkey, AclOb, AclOkey, [AdminAccess], riakacl_rwaccess);
+			{ok, AclSkey} -> riakacl:authorize_predefined_object(Pid, AclSb, AclSkey, AclOb, AclOkey, [AdminAccess], [AnonymousGroupName], riakacl_rwaccess);
 			error         -> riakacl:authorize_predefined_subject(Pid, [AnonymousGroupName], AclOb, AclOkey, riakacl_rwaccess)
 		end,
 	riakc_pool:unlock(KVpool, Pid),
