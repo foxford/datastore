@@ -344,7 +344,7 @@ handle_read_stream(Hmod, Bucket, Key, Params, Pid, Ref, Timeout, #{method := Met
 							end
 					end
 			end;
-		{Status, Headers} when (Status =:= 304) or (Status =:= 404) or (Status =:= 412) ->
+		{Status, Headers} when (Status =:= 304) or (Status =:= 404) or (Status =:= 412) or (Status =:= 416) ->
 			demonitor(Mref, [flush]),
 			riaks2c_http:cancel(Pid, Ref),
 			riaks2c_http:flush(Ref),
