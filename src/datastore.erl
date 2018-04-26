@@ -146,7 +146,7 @@ riak_connection_pools() ->
 				{ok, Conf} = erl_parse:parse_term(S),
 				#{kv_protobuf := #{host := Host, port := Port}} = Conf,
 				[	#{name => kv_protobuf,
-						size => 100,
+						size => 0,
 						connection =>
 							#{host => Host,
 								port => Port,
@@ -166,7 +166,7 @@ gun_connection_pools() ->
 				{ok, Conf} = erl_parse:parse_term(S),
 				#{s2_http := #{host := Host, port := Port}} = Conf,
 				[	#{name => s2_http,
-						size => 100,
+						size => 0,
 						connection =>
 							#{host => Host,
 								port => Port,
