@@ -86,10 +86,40 @@ handle_headers(#{method := Method, headers := Hs} =Req, State) ->
 			{ok, cowboy_req:reply(400, Req), State}
 	end.
 
-% handle_maybe_notfound(Req0, #state{rdesc = Rdesc, bucket = Bucket, key = Key, s2reqopts = S2reqopts} =State) ->
-% 	#{object := #{pool := S2pool, options := S2opts, lock_timeout := LockTimeout, read_timeout := ReadTimeout}} = Rdesc,
+handle_params(#{method := Method} =Req, State) ->
+	try parse_params(Method, Req) of
+		Params ->
+			handle_authentication(Req, State#state{params = Params})
+	catch
+		T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+			{ok, cowboy_req:reply(400, Req), State}
+	end.
 
-handle_params(Req, #state{key = Key, bucket =Bucket, rdesc = Rdesc} =State) ->
+handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) ->
+	try case Params of
+		#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
+		_                        -> datastore_http:decode_access_token(Req, AuthConf)
+	end of TokenPayload ->
+		%% ?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
+		handle_authorization(Req, State#state{authm = TokenPayload})
+	catch T:R ->
+		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
+		{ok, cowboy_req:reply(401, Req), State}
+	end.
+
+handle_authorization(#{method := <<"HEAD">>} =Req, State)   -> handle_read_authorization(Req, State);
+handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State);
+handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State);
+handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
+
+handle_read_authorization(Req, State) ->
+	handle_redirect(Req, State).
+
+handle_write_authorization(Req, State) ->
+	handle_redirect(Req, State).
+
+	handle_redirect(Req, #state{key = Key, bucket =Bucket, rdesc = Rdesc} =State) ->
 	#{object := #{options := S2opts}} = Rdesc,
 	#{host := Host} = S2opts,
 
@@ -99,33 +129,6 @@ handle_params(Req, #state{key = Key, bucket =Bucket, rdesc = Rdesc} =State) ->
 	Location = iolist_to_binary([<<"https://">>, Host, Path]),
 
 	{ok, cowboy_req:reply(303, #{<<"location">> => Location}, Req), State}.
-
-% handle_params(#{method := Method} =Req, State) ->
-% 	try parse_params(Method, Req) of
-% 		Params ->
-% 			handle_authentication(Req, State#state{params = Params})
-% 	catch
-% 		T:R ->
-% 			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-% 			{ok, cowboy_req:reply(400, Req), State}
-% 	end.
-
-% handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) ->
-% 	try case Params of
-% 		#{access_token := Token} -> datastore:decode_access_token(Token, AuthConf);
-% 		_                        -> datastore_http:decode_access_token(Req, AuthConf)
-% 	end of TokenPayload ->
-% 		%% ?INFO_REPORT([{access_token, TokenPayload} | datastore_http_log:format_request(Req)]),
-% 		handle_authorization(Req, State#state{authm = TokenPayload})
-% 	catch T:R ->
-% 		?ERROR_REPORT(datastore_http_log:format_unauthenticated_request(Req), T, R),
-% 		{ok, cowboy_req:reply(401, Req), State}
-% 	end.
-
-% handle_authorization(#{method := <<"HEAD">>} =Req, State)   -> handle_read_authorization(Req, State);
-% handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State);
-% handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State);
-% handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
 
 % handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 % 	try datastore:authorize(datastore_acl:object_key(Bucket, Key), AuthM, Rdesc) of
@@ -406,9 +409,10 @@ allow_riaks2_headers(<<"PUT">>) ->
 allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
-% -spec parse_params(binary(), cowboy_req:req()) -> map().
-% parse_params(<<"HEAD">>, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-% parse_params(<<"GET">>, Req)  -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+-spec parse_params(binary(), cowboy_req:req()) -> map().
+parse_params(<<"HEAD">>, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(<<"GET">>, Req)  -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+parse_params(_Method, _Req)   -> #{}.
 % parse_params(<<"PUT">>, Req) ->
 % 	true = cowboy_req:has_body(Req),
 % 	true = undefined =/= cowboy_req:header(<<"content-length">>, Req),
@@ -416,10 +420,10 @@ allow_riaks2_headers(<<"DELETE">>) ->
 % parse_params(<<"DELETE">>, Req) ->
 % 	#{keepacl => parse_keepaclheader(Req)}.
 
-% -spec parse_read_params([{binary(), binary() | true}], map()) -> map().
-% parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
-% parse_read_params([_|T], M)                         -> parse_read_params(T, M);
-% parse_read_params([], M)                            -> M.
+-spec parse_read_params([{binary(), binary() | true}], map()) -> map().
+parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{access_token => Val});
+parse_read_params([_|T], M)                         -> parse_read_params(T, M);
+parse_read_params([], M)                            -> M.
 
 -spec with_headers([Validator], map()) -> Headers
 	when
