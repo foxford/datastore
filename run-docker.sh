@@ -11,7 +11,8 @@ ULIMIT_FD=262144
 
 function CREATE_DEVELOP_ENVIRONMENT() {
 	local DOCKER_MACHINE_IP=$(docker-machine ip)
-	local DOCKER_IP=${DOCKER_MACHINE_IP:-'localhost'}
+	local MINIKUBE_IP=$(minikube ip)
+	local DOCKER_IP=${DOCKER_MACHINE_IP:-${MINIKUBE_IP:-'localhost'}}
 	printf \
 		"#{s2_http => #{host => \"%s\", port => %s}}." \
 		"${DOCKER_IP}" "${DOCKER_RIAKS2_HTTP_PORT}" \
