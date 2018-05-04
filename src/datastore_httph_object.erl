@@ -64,8 +64,8 @@ init(Req, Opts) ->
 
 handle_request(<<"HEAD">>, Req, State)     -> handle_headers(Req, State);
 handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
-%%handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
-%%handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
+handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
+% handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
 	%%Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
@@ -110,25 +110,31 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 
 handle_authorization(#{method := <<"HEAD">>} =Req, State)   -> handle_read_authorization(Req, State);
 handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State);
-handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State);
-handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
+handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State).
+% handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
 
 handle_read_authorization(Req, State) ->
 	handle_redirect(Req, State).
 
-handle_write_authorization(Req, State) ->
-	handle_redirect(Req, State).
+handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
+	try datastore:authorize(Bucket, AuthM, Rdesc) of
+		{ok, #{write := true}} -> handle_redirect(Req, State);
+		_                      -> {ok, cowboy_req:reply(403, Req), State}
+	catch
+		T:R ->
+			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+			{ok, cowboy_req:reply(422, Req), State}
+	end.
 
-	handle_redirect(Req, #state{key = Key, bucket =Bucket, rdesc = Rdesc} =State) ->
-	#{object := #{options := S2opts}} = Rdesc,
-	#{host := Host} = S2opts,
+handle_redirect(#{method := Method} = Req, #state{key = Key, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
+	#{object := #{options := S2opts, redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
 
 	%% 5 minutes from now
 	Expires = datastore:unix_time() + 300,
-	Path = riaks2c_object:signed_uri(Bucket, Key, <<"GET">>, Expires, S2opts),
-	Location = iolist_to_binary([<<"https://">>, Host, Path]),
+	Path = riaks2c_object:signed_uri(Bucket, Key, Method, Expires, S2reqopts, S2opts),
+	Location = iolist_to_binary([Schema, Host, <<$:>>, integer_to_binary(Port), Path]),
 
-	{ok, cowboy_req:reply(303, #{<<"location">> => Location}, Req), State}.
+	{ok, cowboy_req:reply(307, #{<<"location">> => Location}, Req), State}.
 
 % handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 % 	try datastore:authorize(datastore_acl:object_key(Bucket, Key), AuthM, Rdesc) of

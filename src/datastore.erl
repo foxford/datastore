@@ -146,7 +146,7 @@ riak_connection_pools() ->
 				{ok, Conf} = erl_parse:parse_term(S),
 				#{kv_protobuf := #{host := Host, port := Port}} = Conf,
 				[	#{name => kv_protobuf,
-						size => 0,
+						size => 10,
 						connection =>
 							#{host => Host,
 								port => Port,
@@ -170,7 +170,7 @@ gun_connection_pools() ->
 						connection =>
 							#{host => Host,
 								port => Port,
-								options => #{protocols => [http]}}} ]
+								options => #{protocols => [http], http_opts => #{keepalive => infinity}}}} ]
 			catch _:Reason -> error({missing_develop_environment, ?FUNCTION_NAME, Reason}) end
 	end.
 
@@ -220,6 +220,7 @@ resources() ->
 				#{s2_user := UserOpts} = Conf,
 				#{object =>
 						#{pool => s2_http,
+							redirect => #{host => <<"s3.amazonaws.com">>, port => 8080, schema => <<"http://">>},
 							options => UserOpts,
 							lock_timeout => 5000,
 							read_timeout => 60000,
