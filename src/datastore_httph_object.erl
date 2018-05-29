@@ -69,7 +69,7 @@ handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
 	%%Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET">>, Req0),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, Hs, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
