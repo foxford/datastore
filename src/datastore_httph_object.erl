@@ -416,9 +416,10 @@ allow_riaks2_headers(<<"DELETE">>) ->
 	[].
 
 -spec parse_params(binary(), cowboy_req:req()) -> map().
-parse_params(<<"HEAD">>, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(<<"GET">>, Req)  -> parse_read_params(cowboy_req:parse_qs(Req), #{});
-parse_params(_Method, _Req)   -> #{}.
+parse_params(_Method, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{}).
+%parse_params(<<"HEAD">>, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+%parse_params(<<"GET">>, Req)  -> parse_read_params(cowboy_req:parse_qs(Req), #{});
+%parse_params(_Method, _Req)   -> #{}.
 % parse_params(<<"PUT">>, Req) ->
 % 	true = cowboy_req:has_body(Req),
 % 	true = undefined =/= cowboy_req:header(<<"content-length">>, Req),
