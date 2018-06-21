@@ -36,6 +36,7 @@
 	rdesc           :: map(),
 	authconf        :: map(),
 	bucket          :: iodata(),
+	set             :: iodata() | undefined,
 	key             :: iodata(),
 	params    = #{} :: map(),
 	s2reqopts = #{} :: riaks2c_http:request_options(),
@@ -54,6 +55,7 @@ init(Req, Opts) ->
 			rdesc = Rdesc,
 			authconf = AuthConf,
 			key = cowboy_req:binding(key, Req),
+			set = cowboy_req:binding(set, Req),
 			bucket = cowboy_req:binding(bucket, Req)},
 
 	handle_request(Method, Req, State).
@@ -126,12 +128,12 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 			{ok, cowboy_req:reply(422, Req), State}
 	end.
 
-handle_redirect(#{method := Method} = Req, #state{key = Key, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
+handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
 	#{object := #{options := S2opts, redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
 
 	%% 5 minutes from now
 	Expires = datastore:unix_time() + 300,
-	Path = riaks2c_object:signed_uri(Bucket, Key, Method, Expires, S2reqopts, S2opts),
+	Path = riaks2c_object:signed_uri(Bucket, object_key(Set, Key), Method, Expires, S2reqopts, S2opts),
 	Location = iolist_to_binary([Schema, Host, <<$:>>, integer_to_binary(Port), Path]),
 
 	{ok, cowboy_req:reply(307, #{<<"location">> => Location}, Req), State}.
@@ -469,3 +471,7 @@ with_headers([], _Headers, Acc) ->
 % 		<<"true">> -> true;
 % 		Val        -> error({bad_keepaclheader, Val})
 % 	end.
+
+-spec object_key(iodata(), iodata()) -> iodata().
+object_key(undefined, Key) -> Key;
+object_key(Set, Key)       -> [Set, <<$.>>, Key].
