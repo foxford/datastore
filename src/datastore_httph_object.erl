@@ -66,12 +66,13 @@ init(Req, Opts) ->
 
 handle_request(<<"HEAD">>, Req, State)     -> handle_headers(Req, State);
 handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
-handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
+% handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 % handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
 	Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
-	%%Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
-	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT">>, Req0),
+	% Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
+	% Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT">>, Req0),
+	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET">>, Req0),
 	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, Hs, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
@@ -111,22 +112,12 @@ handle_authentication(Req, #state{authconf = AuthConf, params = Params} =State) 
 	end.
 
 handle_authorization(#{method := <<"HEAD">>} =Req, State)   -> handle_read_authorization(Req, State);
-handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State);
-handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State).
+handle_authorization(#{method := <<"GET">>} =Req, State)    -> handle_read_authorization(Req, State).
+% handle_authorization(#{method := <<"PUT">>} =Req, State)    -> handle_write_authorization(Req, State).
 % handle_authorization(#{method := <<"DELETE">>} =Req, State) -> handle_write_authorization(Req, State).
 
 handle_read_authorization(Req, State) ->
 	handle_redirect(Req, State).
-
-handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
-	try datastore:authorize(Bucket, AuthM, Rdesc) of
-		{ok, #{write := true}} -> handle_redirect(Req, State);
-		_                      -> {ok, cowboy_req:reply(403, Req), State}
-	catch
-		T:R ->
-			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
-			{ok, cowboy_req:reply(422, Req), State}
-	end.
 
 handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
 	#{object := #{options := S2opts, redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
@@ -136,6 +127,16 @@ handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket =
 	Location = iolist_to_binary([Schema, Host, <<$:>>, integer_to_binary(Port), Path]),
 
 	{ok, cowboy_req:reply(307, #{<<"location">> => Location}, Req), State}.
+
+% handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = AuthM} =State) ->
+% 	try datastore:authorize(Bucket, AuthM, Rdesc) of
+% 		{ok, #{write := true}} -> handle_redirect(Req, State);
+% 		_                      -> {ok, cowboy_req:reply(403, Req), State}
+% 	catch
+% 		T:R ->
+% 			?ERROR_REPORT(datastore_http_log:format_request(Req), T, R),
+% 			{ok, cowboy_req:reply(422, Req), State}
+% 	end.
 
 % handle_read_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, key = Key, authm = AuthM} =State) ->
 % 	try datastore:authorize(datastore_acl:object_key(Bucket, Key), AuthM, Rdesc) of
@@ -382,10 +383,10 @@ handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket =
 % 	end.
 
 -spec allow_headers(binary()) -> [binary()].
-allow_headers(<<"PUT">> =Method) ->
-	[	<<"authorization">>,
-		<<"x-datastore-acl">>
-		| [H || {H, _} <- allow_riaks2_headers(Method)]];
+% allow_headers(<<"PUT">> =Method) ->
+% 	[	<<"authorization">>,
+% 		<<"x-datastore-acl">>
+% 		| [H || {H, _} <- allow_riaks2_headers(Method)]];
 allow_headers(Method) ->
 	[	<<"authorization">>
 		| [H || {H, _} <- allow_riaks2_headers(Method)]].
@@ -397,24 +398,24 @@ allow_riaks2_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD"
 		{<<"if-modified-since">>, fun cow_http_hd:parse_if_modified_since/1},
 		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
 		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1},
-		{<<"range">>, fun cow_http_hd:parse_range/1} ];
-allow_riaks2_headers(<<"PUT">>) ->
-	[	%% We can't support 'Expect: 100-continue' HTTP header,
-		%% because Cowboy doesn't support 1xx series of HTTP response codes.
-		%% https://github.com/ninenines/cowboy/issues/1049
-		%% {<<"expect">>, fun cow_http_hd:expect/1},
-		{<<"expires">>, fun cow_http_hd:parse_expires/1},
-		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
-		{<<"content-disposition">>, fun(_) -> ok end},
-		{<<"content-encoding">>, fun cow_http_hd:parse_content_encoding/1},
-		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
-		{<<"content-md5">>, fun(_) -> ok end},
-		{<<"content-type">>, fun cow_http_hd:parse_content_type/1},
-		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
-		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
-		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1} ];
-allow_riaks2_headers(<<"DELETE">>) ->
-	[].
+		{<<"range">>, fun cow_http_hd:parse_range/1} ].
+% allow_riaks2_headers(<<"PUT">>) ->
+% 	[	%% We can't support 'Expect: 100-continue' HTTP header,
+% 		%% because Cowboy doesn't support 1xx series of HTTP response codes.
+% 		%% https://github.com/ninenines/cowboy/issues/1049
+% 		%% {<<"expect">>, fun cow_http_hd:expect/1},
+% 		{<<"expires">>, fun cow_http_hd:parse_expires/1},
+% 		{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
+% 		{<<"content-disposition">>, fun(_) -> ok end},
+% 		{<<"content-encoding">>, fun cow_http_hd:parse_content_encoding/1},
+% 		{<<"content-length">>, fun cow_http_hd:parse_content_length/1},
+% 		{<<"content-md5">>, fun(_) -> ok end},
+% 		{<<"content-type">>, fun cow_http_hd:parse_content_type/1},
+% 		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
+% 		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
+% 		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1} ];
+% allow_riaks2_headers(<<"DELETE">>) ->
+% 	[].
 
 -spec parse_params(binary(), cowboy_req:req()) -> map().
 parse_params(_Method, Req) -> parse_read_params(cowboy_req:parse_qs(Req), #{}).
