@@ -131,9 +131,8 @@ handle_write_authorization(Req, #state{rdesc = Rdesc, bucket = Bucket, authm = A
 handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
 	#{object := #{options := S2opts, redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
 
-	%% 5 minutes from now
-	Expires = datastore:unix_time() + 300,
-	Path = riaks2c_object:signed_uri(Bucket, object_key(Set, Key), Method, Expires, S2reqopts, S2opts),
+	Expires = datastore:unix_time() + datastore:expires_in(),
+	Path = riaks2c_object:signed_uri(Bucket, datastore:object_key(Set, Key), Method, Expires, S2reqopts, S2opts),
 	Location = iolist_to_binary([Schema, Host, <<$:>>, integer_to_binary(Port), Path]),
 
 	{ok, cowboy_req:reply(307, #{<<"location">> => Location}, Req), State}.
@@ -471,7 +470,3 @@ with_headers([], _Headers, Acc) ->
 % 		<<"true">> -> true;
 % 		Val        -> error({bad_keepaclheader, Val})
 % 	end.
-
--spec object_key(iodata(), iodata()) -> iodata().
-object_key(undefined, Key) -> Key;
-object_key(Set, Key)       -> [Set, <<$.>>, Key].

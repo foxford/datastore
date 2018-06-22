@@ -229,6 +229,9 @@ routes() ->
 	Opts = #{resources => datastore:resources(), authentication => datastore:authentication()},
 	Objects =
 		[	{"/api[/v1]/buckets/:bucket[/sets/:set]/objects/:key", datastore_httph_object, Opts} ],
+	
+	Sign =
+		[	{"/api[/v1]/sign", datastore_httph_sign, Opts} ],
 
 	% Objects =
 	% 	[	{"/api[/v1]/buckets/:bucket/objects", datastore_httph_objects, Opts},
@@ -244,4 +247,4 @@ routes() ->
 
 	%[{'_', Objects ++ ACL}].
 
-	[{'_', Objects}].
+	[{'_', Objects ++ Sign}].

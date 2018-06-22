@@ -33,7 +33,9 @@
 	priv_path/1,
 	conf_path/1,
 	authorize/3,
-	decode_access_token/2
+	decode_access_token/2,
+	object_key/2,
+	expires_in/0
 ]).
 
 %% Configuration
@@ -109,6 +111,14 @@ decode_access_token(Token, AuthConf) ->
 	jose_jws_compact:decode_fn(
 		fun(Data, _Opts) -> select_authentication_key(Data, AuthConf) end,
 		Token).
+
+-spec object_key(iodata(), iodata()) -> iodata().
+object_key(undefined, Key) -> Key;
+object_key(Set, Key)       -> [Set, <<$.>>, Key].
+
+-spec expires_in() -> non_neg_integer().
+expires_in() ->
+	300. %% 5 minutes
 
 %% =============================================================================
 %% Configuration
