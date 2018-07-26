@@ -120,7 +120,13 @@ from_json(Req0, #state{authm = AuthM, rdesc = Rdesc} =State) ->
 		Expires = datastore:unix_time() + datastore:expires_in(),
 
 		%% AuthZ
-		{ok, #{write := true}} = datastore:authorize(Bucket, AuthM, Rdesc),
+		_ =
+			case Method of
+				<<"GET">>  -> ignore;
+				<<"HEAD">> -> ignore;
+				_ ->
+					{ok, #{write := true}} = datastore:authorize(Bucket, AuthM, Rdesc)
+			end,
 
 		datastore_http:handle_response(_Req1, State, fun() ->
 			Path = riaks2c_object:signed_uri(Bucket, datastore:object_key(Set, Key), Method, Expires, S2reqopts, S2opts),
