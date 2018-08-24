@@ -230,6 +230,7 @@ resources() ->
 				#{s2_user := UserOpts} = Conf,
 				#{object =>
 						#{pool => s2_http,
+							cdn_redirect => #{host => <<"s3.amazonaws.com">>, port => 8080, schema => <<"http://">>},
 							redirect => #{host => <<"s3.amazonaws.com">>, port => 8080, schema => <<"http://">>},
 							options => UserOpts,
 							lock_timeout => 5000,

@@ -120,7 +120,7 @@ handle_read_authorization(Req, State) ->
 	handle_redirect(Req, State).
 
 handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket = Bucket, s2reqopts = S2reqopts, rdesc = Rdesc} =State) ->
-	#{object := #{options := S2opts, redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
+	#{object := #{options := S2opts, cdn_redirect := #{host := Host, port := Port, schema := Schema}}} = Rdesc,
 
 	Expires = datastore:unix_time() + datastore:expires_in(),
 	Path = riaks2c_object:signed_uri(Bucket, datastore:object_key(Set, Key), Method, Expires, S2reqopts, S2opts),
