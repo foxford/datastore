@@ -64,30 +64,33 @@ init(Req, Opts) ->
 %% Internal functions
 %% =============================================================================
 
-handle_request(<<"HEAD">>, Req, State)     -> handle_headers(Req, State);
-handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
+% handle_request(<<"HEAD">>, Req, State)     -> handle_headers(Req, State);
+% handle_request(<<"GET">>, Req, State)      -> handle_headers(Req, State);
 % handle_request(<<"PUT">>, Req, State)      -> handle_headers(Req, State);
 % handle_request(<<"DELETE">>, Req, State)   -> handle_headers(Req, State);
+
+handle_request(<<"HEAD">>, Req, State)     -> handle_params(Req, State);
+handle_request(<<"GET">>, Req, State)      -> handle_params(Req, State);
 handle_request(<<"OPTIONS">>, Req0, State) ->
-	Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
+	% Hs = cow_http_hd:access_control_allow_headers(allow_headers(cowboy_req:header(<<"access-control-request-method">>, Req0))),
 	% Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT, DELETE">>, Req0),
 	% Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, PUT">>, Req0),
 	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET">>, Req0),
-	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, Hs, Req1),
+	Req2 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"authorization, cache-control, if-match, if-modified-since, if-none-match, if-unmodified-since, range">>, Req1),
 	Req3 = cowboy_req:set_resp_header(<<"access-control-allow-credentials">>, <<"true">>, Req2),
 	{ok, cowboy_req:reply(200, Req3), State};
 handle_request(_, Req, State) ->
 	{ok, cowboy_req:reply(405, Req), State}.
 
-handle_headers(#{method := Method, headers := Hs} =Req, State) ->
-	try with_headers(allow_riaks2_headers(Method), Hs) of
-		S2headers ->
-			handle_params(Req, State#state{s2reqopts = #{headers => S2headers}})
-	catch
-		T:R ->
-			?ERROR_REPORT([{http_headers, Hs} | datastore_http_log:format_request(Req)], T, R),
-			{ok, cowboy_req:reply(400, Req), State}
-	end.
+% handle_headers(#{method := Method, headers := Hs} =Req, State) ->
+% 	try with_headers(allow_riaks2_headers(Method), Hs) of
+% 		S2headers ->
+% 			handle_params(Req, State#state{s2reqopts = #{headers => S2headers}})
+% 	catch
+% 		T:R ->
+% 			?ERROR_REPORT([{http_headers, Hs} | datastore_http_log:format_request(Req)], T, R),
+% 			{ok, cowboy_req:reply(400, Req), State}
+% 	end.
 
 handle_params(#{method := Method} =Req, State) ->
 	try parse_params(Method, Req) of
@@ -388,23 +391,23 @@ handle_redirect(#{method := Method} = Req, #state{key = Key, set = Set, bucket =
 % 			exit({bad_riaks2_response_status, Status})
 % 	end.
 
--spec allow_headers(binary()) -> [binary()].
+%-spec allow_headers(binary()) -> [binary()].
 % allow_headers(<<"PUT">> =Method) ->
 % 	[	<<"authorization">>,
 % 		<<"x-datastore-acl">>
 % 		| [H || {H, _} <- allow_riaks2_headers(Method)]];
-allow_headers(Method) ->
-	[	<<"authorization">>
-		| [H || {H, _} <- allow_riaks2_headers(Method)]].
+%allow_headers(Method) ->
+%	[	<<"authorization">>
+%		| [H || {H, _} <- allow_riaks2_headers(Method)]].
 
--spec allow_riaks2_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
-allow_riaks2_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD">>) ->
-	[	{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
-		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
-		{<<"if-modified-since">>, fun cow_http_hd:parse_if_modified_since/1},
-		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
-		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1},
-		{<<"range">>, fun cow_http_hd:parse_range/1} ].
+% -spec allow_riaks2_headers(binary()) -> [Validator] when Validator :: {binary(), fun((iodata()) -> any())}.
+% allow_riaks2_headers(Method) when (Method =:= <<"GET">>) or (Method =:= <<"HEAD">>) ->
+% 	[	{<<"cache-control">>, fun cow_http_hd:parse_cache_control/1},
+% 		{<<"if-match">>, fun cow_http_hd:parse_if_match/1},
+% 		{<<"if-modified-since">>, fun cow_http_hd:parse_if_modified_since/1},
+% 		{<<"if-none-match">>, fun cow_http_hd:parse_if_none_match/1},
+% 		{<<"if-unmodified-since">>, fun cow_http_hd:parse_if_unmodified_since/1},
+% 		{<<"range">>, fun cow_http_hd:parse_range/1} ].
 % allow_riaks2_headers(<<"PUT">>) ->
 % 	[	%% We can't support 'Expect: 100-continue' HTTP header,
 % 		%% because Cowboy doesn't support 1xx series of HTTP response codes.
@@ -440,28 +443,28 @@ parse_read_params([{<<"access_token">>, Val}|T], M) -> parse_read_params(T, M#{a
 parse_read_params([_|T], M)                         -> parse_read_params(T, M);
 parse_read_params([], M)                            -> M.
 
--spec with_headers([Validator], map()) -> Headers
-	when
-		Validator :: {binary(), fun((iodata()) -> any())},
-		Headers :: [{binary(), iodata()}].
-with_headers(Keys, Headers) ->
-	with_headers(Keys, Headers, []).
+% -spec with_headers([Validator], map()) -> Headers
+% 	when
+% 		Validator :: {binary(), fun((iodata()) -> any())},
+% 		Headers :: [{binary(), iodata()}].
+% with_headers(Keys, Headers) ->
+% 	with_headers(Keys, Headers, []).
 
--spec with_headers([Validator], map(), Headers) -> Headers
-	when
-		Validator :: {binary(), fun((iodata()) -> any())},
-		Headers :: [{binary(), iodata()}].
-with_headers([{Key, Validate}|T], Headers, Acc) ->
-	case maps:find(Key, Headers) of
-		{ok, Val} ->
-			try Validate(Val) of
-				_ -> with_headers(T, Headers, [{Key, Val}|Acc])
-			catch _:_ -> error({bad_http_header, Val}) end;
-		_ ->
-			with_headers(T, Headers, Acc)
-	end;
-with_headers([], _Headers, Acc) ->
-	Acc.
+% -spec with_headers([Validator], map(), Headers) -> Headers
+% 	when
+% 		Validator :: {binary(), fun((iodata()) -> any())},
+% 		Headers :: [{binary(), iodata()}].
+% with_headers([{Key, Validate}|T], Headers, Acc) ->
+% 	case maps:find(Key, Headers) of
+% 		{ok, Val} ->
+% 			try Validate(Val) of
+% 				_ -> with_headers(T, Headers, [{Key, Val}|Acc])
+% 			catch _:_ -> error({bad_http_header, Val}) end;
+% 		_ ->
+% 			with_headers(T, Headers, Acc)
+% 	end;
+% with_headers([], _Headers, Acc) ->
+% 	Acc.
 
 % -spec parse_aclheader(cowboy_req:req()) -> [{binary(), riakacl_group:group()}].
 % parse_aclheader(Req) ->
