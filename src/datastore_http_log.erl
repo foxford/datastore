@@ -54,8 +54,8 @@ format_request(Req) ->
 			{http_streamid, StreamId},
 			{http_uri, iolist_to_binary(cowboy_req:uri(Req))},
 			{http_method, Method},
-			{http_version, Version},
-			{http_peer, <<(list_to_binary(inet:ntoa(Addr)))/binary, $:, (integer_to_binary(Port))/binary>>} ],
+			{http_version, Version}
+		],
 	add_optional_map_property(http_referer, <<"referer">>, Headers,
 		add_optional_map_property(http_user_agent, <<"user-agent">>, Headers, Acc)).
 
