@@ -47,7 +47,7 @@ format_request(Req) ->
 		streamid := StreamId,
 		method := Method,
 		version := Version,
-		headers := Headers,
+		headers := Headers } = Req,
 	Acc =
 		[	{http_pid, Pid},
 			{http_streamid, StreamId},
