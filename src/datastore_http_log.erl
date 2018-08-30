@@ -48,7 +48,6 @@ format_request(Req) ->
 		method := Method,
 		version := Version,
 		headers := Headers,
-		peer := {Addr, Port}} = Req,
 	Acc =
 		[	{http_pid, Pid},
 			{http_streamid, StreamId},
