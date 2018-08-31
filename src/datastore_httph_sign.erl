@@ -106,7 +106,7 @@ options(Req0, State) ->
 %% =============================================================================
 
 from_json(Req0, #state{authm = AuthM, rdesc = Rdesc} =State) ->
-	#{object := #{options := S2opts, cdn_redirect := ReadRedirect, redirect := WriteRedirect}} = Rdesc,
+	#{object := #{options := S2opts, redirect := Redirect}} = Rdesc,
 	datastore_http:handle_payload(Req0, State, fun(Payload, _Req1) ->
 		Params = verify_resource(jsx:decode(Payload)),
 
@@ -122,11 +122,11 @@ from_json(Req0, #state{authm = AuthM, rdesc = Rdesc} =State) ->
 		%% AuthZ
 		#{host := Host, port := Port, schema := Schema} =
 			case Method of
-				<<"GET">>  -> ReadRedirect;
-				<<"HEAD">> -> ReadRedirect;
+				<<"GET">>  -> datastore:cdn_redirect_options(Bucket, Set, Rdesc);
+				<<"HEAD">> -> datastore:cdn_redirect_options(Bucket, Set, Rdesc);
 				_ ->
 					{ok, #{write := true}} = datastore:authorize(Bucket, AuthM, Rdesc),
-					WriteRedirect
+					Redirect
 			end,
 
 		datastore_http:handle_response(_Req1, State, fun() ->

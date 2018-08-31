@@ -35,7 +35,8 @@
 	authorize/3,
 	decode_access_token/2,
 	object_key/2,
-	expires_in/0
+	expires_in/0,
+	cdn_redirect_options/3
 ]).
 
 %% Configuration
@@ -119,6 +120,19 @@ object_key(Set, Key)       -> [Set, <<$.>>, Key].
 -spec expires_in() -> non_neg_integer().
 expires_in() ->
 	300. %% 5 minutes
+
+-spec cdn_redirect_options(binary(), binary(), map()) -> map().
+cdn_redirect_options(Bucket, Set, Rdesc) ->
+	#{object := #{cdn_sets := Sets, cdn_buckets := Buckets, cdn_redirect := ReadRedirect, redirect := WriteRedirect}} = Rdesc,
+	case lists:member(Set, Sets) of
+		true ->
+			case lists:member(Bucket, Buckets) of
+				true -> ReadRedirect;
+				_    -> WriteRedirect
+			end;
+		_ ->
+			WriteRedirect
+	end.
 
 %% =============================================================================
 %% Configuration
@@ -230,7 +244,8 @@ resources() ->
 				#{s2_user := UserOpts} = Conf,
 				#{object =>
 						#{pool => s2_http,
-							cdn_sets => [],
+							cdn_sets => [<<"cdn-test-set">>],
+							cdn_buckets => [<<"cdn-test-bucket">>],
 							cdn_redirect => #{host => <<"s4.amazonaws.com">>, port => 8080, schema => <<"http://">>},
 							redirect => #{host => <<"s3.amazonaws.com">>, port => 8080, schema => <<"http://">>},
 							options => UserOpts,
